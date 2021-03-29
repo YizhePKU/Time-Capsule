@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+service Scheduler {
+    rpc SaveUrl (Url) returns (SaveUrlResponse);
+    rpc ListSnapshots (Url) returns (SnapshotList);
+}
+
+message Url {
+    string url = 1;
+}
+
+message Snapshot {
+    bytes uuid = 2;
+    bytes hash = 3;
+    string storage_url = 4;
+}
+
+message SnapshotList {
+    repeated Snapshot snapshots = 5;
+}
+
+message SaveUrlResponse {
+    int32 status_code = 6;
+}
