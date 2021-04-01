@@ -1,7 +1,7 @@
 import grpc
 
-from rpc.scheduler_pb2_grpc import SchedulerStub
-from rpc import scheduler_pb2
+from service.scheduler_pb2_grpc import SchedulerStub
+from service import scheduler_pb2
 
 def run():
     with grpc.insecure_channel('localhost:50051') as channel:
