@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+service Scheduler {
+    rpc SaveUrl (Url) returns (Ack);
+    rpc ListSnapshots (Url) returns (SnapshotList);
+
+    rpc RegisterWorker (WorkerInfo) returns (Ack);
+}
+
+message Url {
+    string url = 1;
+}
+
+message Snapshot {
+    bytes uuid = 2;
+    bytes hash = 3;
+    string storage_url = 4;
+}
+
+message SnapshotList {
+    repeated Snapshot snapshots = 5;
+}
+
+message SaveUrlResponse {
+    reserved 6;
+}
+
+message WorkerInfo {
+    string addr = 7;
+    uint32 port = 8;
+}
+
+message Ack {
+    bool ok = 9;
+    string msg = 10;
+}
