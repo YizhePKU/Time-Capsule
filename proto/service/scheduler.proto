@@ -28,5 +28,5 @@ message WorkerInfo {
 
 message Ack {
     int32 status_code = 6;
-    string msg = 10;
+    string message = 10;
 }
