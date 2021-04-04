@@ -7,7 +7,8 @@ from bdware.bdledger.api.ledger_pb2_grpc import LedgerStub
 from bdware.bdledger.api import ledger_pb2
 
 ledger = 'time_capsule'
-hello_world_key = b'\xb3\xeak\xaf\xa4h\xb4\xfa\xc7\x9d\x07\xe58\x1a\xa7\xdd\xc5\x0f\x06\x9e'
+good_key = b'\xb3\xeak\xaf\xa4h\xb4\xfa\xc7\x9d\x07\xe58\x1a\xa7\xdd\xc5\x0f\x06\x9e'
+bad_key = b'\000\xeak\xaf\xa4h\xb4\xfa\xc7\x9d\x07\xe58\x1a\xa7\xdd\xc5\x0f\x06\x9e'
 
 chan = grpc.insecure_channel('39.104.201.40:21121')
 ledger_stub = LedgerStub(chan)
@@ -34,5 +35,11 @@ def get(key: bytes) -> bytes:
         ledger=ledger,
         hash=key,
     )
-    response = query_stub.GetTransactionByHash(request)
+    try:
+        response = query_stub.GetTransactionByHash(request)
+    except grpc.RpcError as e:
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise KeyError("Invalid ledger key") from e
+        else:
+            raise
     return response.transaction.data
