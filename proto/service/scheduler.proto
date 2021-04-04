@@ -21,16 +21,12 @@ message SnapshotList {
     repeated Snapshot snapshots = 5;
 }
 
-message SaveUrlResponse {
-    reserved 6;
-}
-
 message WorkerInfo {
     string addr = 7;
     uint32 port = 8;
 }
 
 message Ack {
-    bool ok = 9;
+    int32 status_code = 6;
     string msg = 10;
 }
