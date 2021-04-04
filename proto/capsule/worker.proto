@@ -4,13 +4,6 @@ package capsule;
 
 import "capsule/common.proto";
 
-message CrawlUrlResult {
-    oneof result {
-        Empty ok = 1;
-        Error err = 2;
-    }
-}
-
 service Worker {
-    rpc CrawlUrl(Url) returns (CrawlUrlResult);
+    rpc CrawlUrl(Url) returns (Empty);
 }

@@ -4,38 +4,10 @@ package capsule;
 
 import "capsule/common.proto";
 
-message SaveUrlResult {
-    oneof result {
-        Empty ok = 1;
-        Error err = 2;
-    }
-}
-
-message ListSnapshotsResult {
-    oneof result {
-        SnapshotList ok = 1;
-        Error err = 2;
-    }
-}
-
-message RegisterWorkerResult {
-    oneof result {
-        Empty ok = 1;
-        Error err = 2;
-    }
-}
-
-message RegisterStorageResult {
-    oneof result {
-        Empty ok = 1;
-        Error err = 2;
-    }
-}
-
 service Scheduler {
-    rpc SaveUrl (Url) returns (SaveUrlResult);
-    rpc ListSnapshots (Url) returns (ListSnapshotsResult);
+    rpc SaveUrl (Url) returns (Empty);
+    rpc ListSnapshots (Url) returns (SnapshotList);
 
-    rpc RegisterWorker (Endpoint) returns (RegisterWorkerResult);
-    rpc RegisterStorage (Endpoint) returns (RegisterStorageResult);
+    rpc RegisterWorker (Endpoint) returns (Empty);
+    rpc RegisterStorage (Endpoint) returns (Empty);
 }
