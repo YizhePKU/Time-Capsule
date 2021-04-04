@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package capsule;
+
+import "capsule/common.proto";
+
+message StoreContentResult {
+    oneof result {
+        Empty ok = 1;
+        Error err = 2;
+    }
+}
+
+message GetContentResult {
+    oneof result {
+        Content ok = 1;
+        Error err = 2;
+    }
+}
+
+service Storage {
+    rpc StoreContent(Content) returns (StoreContentResult);
+    rpc GetContent(Snapshot) returns (GetContentResult);
+}
