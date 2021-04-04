@@ -4,7 +4,8 @@ service Scheduler {
     rpc SaveUrl (Url) returns (Ack);
     rpc ListSnapshots (Url) returns (SnapshotList);
 
-    rpc RegisterWorker (WorkerInfo) returns (Ack);
+    rpc RegisterWorker (Endpoint) returns (Ack);
+    rpc RegisterStorage (Endpoint) returns (Ack);
 }
 
 message Url {
@@ -21,7 +22,7 @@ message SnapshotList {
     repeated Snapshot snapshots = 5;
 }
 
-message WorkerInfo {
+message Endpoint {
     string addr = 7;
     uint32 port = 8;
 }
