@@ -1,5 +1,4 @@
 import sqlite3
-import threading
 import uuid
 import hashlib
 import logging
@@ -19,8 +18,6 @@ from capsule import storage_pb2
 
 db_file = 'db/test.db'
 
-thread_local = threading.local()
-
 def make_uuid():
     return uuid.uuid4().bytes
 
@@ -35,13 +32,7 @@ class MyScheduler(SchedulerServicer):
         self.storage_pool = ["localhost:8002"]
 
     def db_connect(self):
-        try:
-            return thread_local.db
-        except AttributeError:
-            db = sqlite3.connect(db_file)
-            db.row_factory = sqlite3.Row
-            thread_local.db = db
-            return thread_local.db
+        return sqlite3.connect(db_file)
 
     def SaveUrl(self, request, context):
         if not self.worker_pool:
