@@ -1,0 +1,9 @@
+CREATE TABLE snapshots (
+    uuid BLOB NOT NULL,
+    url TEXT NOT NULL,
+    hash BLOB NOT NULL,
+    timestamp INTEGER NOT NULL,
+    ledger_key BLOB NOT NULL
+);
+CREATE UNIQUE INDEX snapshots_uuid ON snapshots (uuid);
+CREATE INDEX snapshots_url ON snapshots (url);
