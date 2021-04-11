@@ -7,6 +7,7 @@ import "capsule/common.proto";
 service Scheduler {
     rpc SaveUrl (Url) returns (Empty);
     rpc ListSnapshots (Url) returns (SnapshotList);
+    rpc FetchSnapshot (Snapshot) returns (Content);
 
     rpc RegisterWorker (Endpoint) returns (Empty);
     rpc RegisterStorage (Endpoint) returns (Empty);

@@ -71,6 +71,13 @@ class MyScheduler(SchedulerServicer):
                 ))
         return SnapshotList(snapshots=snapshots)
 
+    def FetchSnapshot(self, request, context):
+        if not self.storage_pool:
+            context.abort("No available storage")
+        with grpc.insecure_channel(self.storage_pool[0]) as chan:
+            storage_stub = StorageStub(chan)
+            return storage_stub.GetContent(request)
+
     def RegisterWorker(self, request, context):
         addr = request.addr
         port = request.port
