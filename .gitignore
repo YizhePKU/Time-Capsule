@@ -5,3 +5,5 @@ __pycache__/
 /bdware/
 /google/
 /capsule/
+
+db/*.db
