@@ -28,8 +28,8 @@ def sha256(stuff: bytes):
 
 class MyScheduler(SchedulerServicer):
     def __init__(self):
-        self.worker_pool = ['192.168.43.237:50051']
-        self.storage_pool = ['192.168.43.237:50050']
+        self.worker_pool = []
+        self.storage_pool = []
 
     def db_connect(self):
         conn = sqlite3.connect(db_file)
