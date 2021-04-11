@@ -28,30 +28,40 @@ def sha256(stuff: bytes):
 
 class MyScheduler(SchedulerServicer):
     def __init__(self):
-        self.worker_pool = ["localhost:8001"]
-        self.storage_pool = ["localhost:8002"]
+        self.worker_pool = ['192.168.43.237:50051']
+        self.storage_pool = ['192.168.43.237:50050']
 
     def db_connect(self):
-        return sqlite3.connect(db_file)
+        conn = sqlite3.connect(db_file)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def SaveUrl(self, request, context):
+        logging.info(f'Save url request: {request.url}')
         if not self.worker_pool:
             context.abort(StatusCode.Unavailable, "No available worker")
         if not self.storage_pool:
             context.abort(StatusCode.Unavailable, "No available storage")
+
+        # Let worker crawl the webpage
         with grpc.insecure_channel(self.worker_pool[0]) as chan:
             worker_stub = WorkerStub(chan)
             data = worker_stub.CrawlUrl(Url(url=request.url)).data
-        with grpc.insecure_channel(self.storage_pool[0]) as chan:
-            storage_stub = StorageStub(chan)
-            storage_stub.StoreContent(Content(data=data))
 
-        cmd = 'INSERT INTO snapshots (uuid, url, hash, timestamp, ledger_key) VALUES (?, ?, ?, ?, ?)'
+        # Create metadata
         uuid = make_uuid()
         url = request.url
         _hash = sha256(data)
         timestamp = int(unix_time())
         ledger_key = b''
+        meta = Snapshot(uuid=uuid, hash=_hash, url=Url(url=url), timestamp=timestamp)
+
+        # Store the webpage and metadata to storage
+        with grpc.insecure_channel(self.storage_pool[0]) as chan:
+            storage_stub = StorageStub(chan)
+            storage_stub.StoreContent(Content(meta=meta, data=data))
+
+        cmd = 'INSERT INTO snapshots (uuid, url, hash, timestamp, ledger_key) VALUES (?, ?, ?, ?, ?)'
 
         with self.db_connect() as db:
             db.execute(cmd, (uuid, url, _hash, timestamp, ledger_key))
@@ -76,28 +86,32 @@ class MyScheduler(SchedulerServicer):
             context.abort("No available storage")
         with grpc.insecure_channel(self.storage_pool[0]) as chan:
             storage_stub = StorageStub(chan)
-            return storage_stub.GetContent(request)
+            content = storage_stub.GetContent(request)
+        return content
 
     def RegisterWorker(self, request, context):
         addr = request.addr
         port = request.port
+        logging.info(f'Worker registered: {addr}:{port}')
         self.worker_pool.append(f'{addr}:{port}')
-        return scheduler_pb2.Ack(status_code=0, message="OK")
+        return Empty()
 
     def RegisterStorage(self, request, context):
         addr = request.addr
         port = request.port
+        logging.info(f'Storage registered: {addr}:{port}')
         self.storage_pool.append(f'{addr}:{port}')
-        return scheduler_pb2.Ack(status_code=0, message="OK")
+        return Empty()
 
 
-def serve():
+def serve(port=8000):
     server = grpc.server(ThreadPoolExecutor(max_workers=10))
     add_SchedulerServicer_to_server(MyScheduler(), server)
-    server.add_insecure_port('0.0.0.0:8000')
+    server.add_insecure_port(f'127.0.0.1:{port}')
     server.start()
+    logging.info(f'Server started at port {port}')
     server.wait_for_termination()
 
 if __name__ == '__main__':
-    logging.basicConfig()
+    logging.basicConfig(level=logging.INFO)
     serve()
