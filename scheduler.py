@@ -1,3 +1,4 @@
+import threading
 import sqlite3
 import uuid
 import hashlib
@@ -8,7 +9,7 @@ import grpc
 from grpc import StatusCode
 
 import ledger
-from capsule.common_pb2 import Empty, Error, Url, Snapshot, SnapshotList, Content, Endpoint
+from capsule.common_pb2 import Empty, Snapshot, Content, Endpoint
 from capsule.scheduler_pb2_grpc import SchedulerServicer, add_SchedulerServicer_to_server
 from capsule import scheduler_pb2
 from capsule.worker_pb2_grpc import WorkerStub
@@ -25,9 +26,32 @@ def sha256(stuff: bytes):
     m = hashlib.sha256(stuff)
     return m.digest()
 
+def get_metadata(context):
+    return dict(context.invocation_metadata())
+
+def requires_token(f):
+    def inner(self, request, context):
+        metadata = get_metadata(context)
+        if 'token' not in metadata:
+            context.abort(StatusCode.UNAUTHORIZED, "Auth token needed")
+        token = metadata['token']
+        with self.lock:
+            if token not in self.sessions:
+                context.abort(StatusCode.UNAUTHORIZED, "Bad token")
+            else:
+                context.session_id = sessions[token]
+        return f(self, request, context)
+    return inner
 
 class MyScheduler(SchedulerServicer):
     def __init__(self):
+        # Protects try_logins and sessions
+        self.lock = threading.Lock()
+        # token -> event
+        self.try_logins = {}
+        # token -> id
+        self.sessions = {}
+
         self.worker_pool = []
         self.storage_pool = []
 
@@ -35,59 +59,136 @@ class MyScheduler(SchedulerServicer):
         conn = sqlite3.connect(db_file)
         conn.row_factory = sqlite3.Row
         return conn
+    
+    def TryLogin(self, request, context):
+        token = request.token
+        with self.lock:
+            if token in self.sessions:
+                context.abort(Status.INVALID_ARGUMENT, "Token is in use")
+            if token in self.try_logins:
+                context.abort(Status.INVALID_ARGUMENT, "Duplicate login request")
+            event = threading.Event()
+            self.try_logins[token] = event
+        confirmed = event.wait(timeout=30)
+        with self.lock:
+            del self.try_logins[token]
+        if confirmed:
+            return Empty()
+        else:
+            context.abort(Status.DEADLINE_EXCEEDED, "Confirmation timeout")
 
-    def SaveUrl(self, request, context):
-        logging.info(f'Save url request: {request.url}')
-        if not self.worker_pool:
-            context.abort(StatusCode.Unavailable, "No available worker")
-        if not self.storage_pool:
-            context.abort(StatusCode.Unavailable, "No available storage")
+    def ConfirmLogin(self, request, context):
+        token = request.token
+        session_id = request.openid
+        with self.lock:
+            if token not in self.try_logins:
+                context.abort(Status.INVALID_ARGUMENT, "Non-existing token")
+            self.try_logins[token].set()
+            self.sessions[token] = session_id
 
-        # Let worker crawl the webpage
-        with grpc.insecure_channel(self.worker_pool[0]) as chan:
-            worker_stub = WorkerStub(chan)
-            data = worker_stub.CrawlUrl(Url(url=request.url)).data
+    @requires_token
+    def GetUserInfo(self, request, context):
+        return scheduler_pb2.UserInfo(name="MyUserName", aids=[b'aid1', b'aid2'], rids=[b'rid1', b'rid2'])
 
-        # Create metadata
-        uuid = make_uuid()
-        url = request.url
-        _hash = sha256(data)
-        timestamp = int(unix_time())
-        ledger_key = b''
-        meta = Snapshot(uuid=uuid, hash=_hash, url=Url(url=url), timestamp=timestamp)
+    @requires_token
+    def GetArticleInfo(self, request, context):
+        aid = request.aid
+        snapshot1 = Snapshot(
+            sid=b'sid1',
+            hash=b'hash1',
+            url='url1.com',
+            timestamp=1234,
+            status=Snapshot.Status.ok,
+        )
+        snapshot2 = Snapshot(
+            sid=b'sid2',
+            hash=b'hash2',
+            url='url2.com',
+            timestamp=5678,
+            status=Snapshot.Status.dead,
+        )
+        snapshots = [snapshot1, snapshot2]
+        return scheduler_pb2.ArticleInfo(name="MyArticleName", snapshots=snapshots)
 
-        # Store the webpage and metadata to storage
-        with grpc.insecure_channel(self.storage_pool[0]) as chan:
-            storage_stub = StorageStub(chan)
-            storage_stub.StoreContent(Content(meta=meta, data=data))
+    @requires_token
+    def CreateArticle(self, request, context):
+        return scheduler_pb2.ArticleId(aid=b'aid1')
 
-        cmd = 'INSERT INTO snapshots (uuid, url, hash, timestamp, ledger_key) VALUES (?, ?, ?, ?, ?)'
+    @requires_token
+    def AddUrlsToArticle(self, request, context):
+        return
+        yield
 
-        with self.db_connect() as db:
-            db.execute(cmd, (uuid, url, _hash, timestamp, ledger_key))
-        return Empty()
+    @requires_token
+    def DeleteArticle(self, request, context):
+        pass
 
-    def ListSnapshots(self, request, context):
-        url = request.url
-        cmd = 'SELECT uuid, hash, timestamp FROM snapshots WHERE url = ?'
-        snapshots = []
-        with self.db_connect() as db:
-            for row in db.execute(cmd, (url,)):
-                snapshots.append(Snapshot(
-                    uuid = row['uuid'],
-                    url = Url(url=url),
-                    hash = row['hash'],
-                    timestamp = int(row['timestamp']),
-                ))
-        return SnapshotList(snapshots=snapshots)
+    @requires_token
+    def GetRequestInfo(self, request, context):
+        rid = request.rid
+        RequestInfo = scheduler_pb2.RequestInfo
+        return RequestInfo(status=RequestInfo.Status.done)
 
+    @requires_token
     def FetchSnapshot(self, request, context):
-        if not self.storage_pool:
-            context.abort("No available storage")
-        with grpc.insecure_channel(self.storage_pool[0]) as chan:
-            storage_stub = StorageStub(chan)
-            content = storage_stub.GetContent(request)
-        return content
+        return Content(
+            sid=b'sid1',
+            html="<body>Hello world</body>",
+            header="",
+        )
+
+    # def SaveUrl(self, request, context):
+    #     logging.info(f'Save url request: {request.url}')
+    #     if not self.worker_pool:
+    #         context.abort(StatusCode.Unavailable, "No available worker")
+    #     if not self.storage_pool:
+    #         context.abort(StatusCode.Unavailable, "No available storage")
+
+    #     # Let worker crawl the webpage
+    #     with grpc.insecure_channel(self.worker_pool[0]) as chan:
+    #         worker_stub = WorkerStub(chan)
+    #         data = worker_stub.CrawlUrl(Url(url=request.url)).data
+
+    #     # Create metadata
+    #     uuid = make_uuid()
+    #     url = request.url
+    #     _hash = sha256(data)
+    #     timestamp = int(unix_time())
+    #     ledger_key = b''
+    #     meta = Snapshot(uuid=uuid, hash=_hash, url=Url(url=url), timestamp=timestamp)
+
+    #     # Store the webpage and metadata to storage
+    #     with grpc.insecure_channel(self.storage_pool[0]) as chan:
+    #         storage_stub = StorageStub(chan)
+    #         storage_stub.StoreContent(Content(meta=meta, data=data))
+
+    #     cmd = 'INSERT INTO snapshots (uuid, url, hash, timestamp, ledger_key) VALUES (?, ?, ?, ?, ?)'
+
+    #     with self.db_connect() as db:
+    #         db.execute(cmd, (uuid, url, _hash, timestamp, ledger_key))
+    #     return Empty()
+
+    # def ListSnapshots(self, request, context):
+    #     url = request.url
+    #     cmd = 'SELECT uuid, hash, timestamp FROM snapshots WHERE url = ?'
+    #     snapshots = []
+    #     with self.db_connect() as db:
+    #         for row in db.execute(cmd, (url,)):
+    #             snapshots.append(Snapshot(
+    #                 uuid = row['uuid'],
+    #                 url = Url(url=url),
+    #                 hash = row['hash'],
+    #                 timestamp = int(row['timestamp']),
+    #             ))
+    #     return SnapshotList(snapshots=snapshots)
+
+    # def FetchSnapshot(self, request, context):
+    #     if not self.storage_pool:
+    #         context.abort("No available storage")
+    #     with grpc.insecure_channel(self.storage_pool[0]) as chan:
+    #         storage_stub = StorageStub(chan)
+    #         content = storage_stub.GetContent(request)
+    #     return content
 
     def RegisterWorker(self, request, context):
         addr = request.addr
