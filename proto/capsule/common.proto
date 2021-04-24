@@ -4,32 +4,27 @@ package capsule;
 
 message Empty {}
 
-message Error {
-    int32 code = 1;
-    string msg = 2;
-}
-
-message Url {
-    string url = 1;
-}
-
 message Snapshot {
-    bytes uuid = 1;
-    bytes hash = 2;
-    Url url = 3;
-    uint64 timestamp = 4;
-}
+    enum Status {
+        ok = 0;
+        dead = 1;
+    };
 
-message SnapshotList {
-    repeated Snapshot snapshots = 1;
+    bytes sid = 1;
+    bytes hash = 2;
+    string url = 3;
+    uint64 timestamp = 4;
+    Status status = 5;
 }
 
 message Content {
-    Snapshot meta = 1;
-    bytes data = 2;
+    bytes sid = 1;
+    string html = 2;
+    string header = 3;
 }
 
 message Endpoint {
     string addr = 1;
     uint32 port = 2;
 }
+

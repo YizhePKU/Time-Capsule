@@ -4,6 +4,11 @@ package capsule;
 
 import "capsule/common.proto";
 
+message CrawlRequest {
+    repeated bytes sids = 1;
+    repeated string urls = 2;
+}
+
 service Worker {
-    rpc CrawlUrl(Url) returns (Content);
+    rpc CrawlUrl(CrawlRequest) returns (stream Content);
 }

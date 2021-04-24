@@ -4,11 +4,71 @@ package capsule;
 
 import "capsule/common.proto";
 
+message LoginRequest {
+    bytes token = 1;
+}
+
+message LoginConfirmation {
+    bytes token = 1;
+    bytes openid = 2;
+}
+
+message UserInfo {
+    string name = 1;
+    repeated bytes aids = 2;
+    repeated bytes rids = 3;
+}
+
+message ArticleId {
+    bytes aid = 1;
+}
+
+message RequestId {
+    bytes rid = 1;
+}
+
+message RequestInfo {
+    enum Status {
+        done = 0;
+        working = 1;
+        error = 2;
+    }
+    Status status = 1;
+}
+
+message CreateArticleRequest {
+    string name = 1;
+}
+
+message AddUrlsRequest {
+    bytes aid = 1;
+    repeated string urls = 2;
+}
+
+message ArticleInfo {
+    string name = 1;
+    repeated Snapshot snapshots = 2;
+}
+    
+message CompletionNotice {
+    bytes sid = 1;
+    bool success = 2;
+}
+
 service Scheduler {
-    rpc SaveUrl (Url) returns (Empty);
-    rpc ListSnapshots (Url) returns (SnapshotList);
+    rpc TryLogin (LoginRequest) returns (Empty);
+    rpc ConfirmLogin (LoginConfirmation) returns (Empty);
+
+    // These interfaces requires token in their context.
+    rpc GetUserInfo (Empty) returns (UserInfo);
+    rpc GetArticleInfo (ArticleId) returns (ArticleInfo);
+    rpc CreateArticle (CreateArticleRequest) returns (ArticleId);
+    rpc AddUrlsToArticle (AddUrlsRequest) returns (stream CompletionNotice);
+    rpc DeleteArticle (ArticleId) returns (Empty);
+    rpc GetRequestInfo (RequestId) returns (RequestInfo);
     rpc FetchSnapshot (Snapshot) returns (Content);
 
     rpc RegisterWorker (Endpoint) returns (Empty);
     rpc RegisterStorage (Endpoint) returns (Empty);
 }
+
