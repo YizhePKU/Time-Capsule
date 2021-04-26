@@ -5,12 +5,13 @@ package capsule;
 import "capsule/common.proto";
 
 message LoginRequest {
-    bytes token = 1;
+    string token = 1;
 }
 
 message LoginConfirmation {
-    bytes token = 1;
-    bytes openid = 2;
+    string token = 1;
+    string openid = 2;
+    string name = 3;
 }
 
 message UserInfo {
@@ -46,7 +47,7 @@ message AddUrlsRequest {
 }
 
 message ArticleInfo {
-    string name = 1;
+    string title = 1;
     repeated Snapshot snapshots = 2;
 }
     
