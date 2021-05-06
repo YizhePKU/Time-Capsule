@@ -39,7 +39,7 @@ def requires_token(f):
             if token not in self.sessions:
                 context.abort(StatusCode.UNAUTHORIZED, "Bad token")
             else:
-                context.session_id = sessions[token]
+                context.openid = self.sessions[token]
         return f(self, request, context)
     return inner
 
@@ -49,7 +49,7 @@ class MyScheduler(SchedulerServicer):
         self.lock = threading.Lock()
         # token -> event
         self.try_logins = {}
-        # token -> id
+        # token -> openid
         self.sessions = {}
 
         self.worker_pool = []
@@ -62,11 +62,12 @@ class MyScheduler(SchedulerServicer):
     
     def TryLogin(self, request, context):
         token = request.token
+        logging.info(f'TryLogin: token={token}')
         with self.lock:
             if token in self.sessions:
-                context.abort(Status.INVALID_ARGUMENT, "Token is in use")
+                context.abort(StatusCode.INVALID_ARGUMENT, "Token is in use")
             if token in self.try_logins:
-                context.abort(Status.INVALID_ARGUMENT, "Duplicate login request")
+                context.abort(StatusCode.INVALID_ARGUMENT, "Duplicate login request")
             event = threading.Event()
             self.try_logins[token] = event
         confirmed = event.wait(timeout=30)
@@ -75,23 +76,27 @@ class MyScheduler(SchedulerServicer):
         if confirmed:
             return Empty()
         else:
-            context.abort(Status.DEADLINE_EXCEEDED, "Confirmation timeout")
+            context.abort(StatusCode.DEADLINE_EXCEEDED, "Confirmation timeout")
 
     def ConfirmLogin(self, request, context):
         token = request.token
-        session_id = request.openid
+        openid = request.openid
+        logging.info(f'ConfirmLogin: token={token}, openid={openid}')
         with self.lock:
             if token not in self.try_logins:
-                context.abort(Status.INVALID_ARGUMENT, "Non-existing token")
+                context.abort(StatusCode.INVALID_ARGUMENT, "Non-existing token")
             self.try_logins[token].set()
-            self.sessions[token] = session_id
+            self.sessions[token] = openid
+        return Empty()
 
     @requires_token
     def GetUserInfo(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         return scheduler_pb2.UserInfo(name="MyUserName", aids=[b'aid1', b'aid2'], rids=[b'rid1', b'rid2'])
 
     @requires_token
     def GetArticleInfo(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         aid = request.aid
         snapshot1 = Snapshot(
             sid=b'sid1',
@@ -112,25 +117,30 @@ class MyScheduler(SchedulerServicer):
 
     @requires_token
     def CreateArticle(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         return scheduler_pb2.ArticleId(aid=b'aid1')
 
     @requires_token
     def AddUrlsToArticle(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         return
         yield
 
     @requires_token
     def DeleteArticle(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         pass
 
     @requires_token
     def GetRequestInfo(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         rid = request.rid
         RequestInfo = scheduler_pb2.RequestInfo
         return RequestInfo(status=RequestInfo.Status.done)
 
     @requires_token
     def FetchSnapshot(self, request, context):
+        logging.info(f'GetUserInfo: openid={context.openid}')
         return Content(
             sid=b'sid1',
             html="<body>Hello world</body>",
