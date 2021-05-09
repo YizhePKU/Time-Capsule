@@ -56,6 +56,14 @@ message CompletionNotice {
     bool success = 2;
 }
 
+message Query {
+    string url = 1;
+}
+
+message SnapshotList {
+    repeated Snapshot snapshots = 1;
+}
+
 service Scheduler {
     rpc TryLogin (LoginRequest) returns (Empty);
     rpc ConfirmLogin (LoginConfirmation) returns (Empty);
@@ -67,7 +75,10 @@ service Scheduler {
     rpc AddUrlsToArticle (AddUrlsRequest) returns (stream CompletionNotice);
     rpc DeleteArticle (ArticleId) returns (Empty);
     rpc GetRequestInfo (RequestId) returns (RequestInfo);
+
+    // These interfaces are open to the public.
     rpc FetchSnapshot (Snapshot) returns (Content);
+    rpc ListSnapshot (Query) returns (SnapshotList);
 
     rpc RegisterWorker (Endpoint) returns (Empty);
     rpc RegisterStorage (Endpoint) returns (Empty);

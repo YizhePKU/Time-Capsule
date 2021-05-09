@@ -147,6 +147,18 @@ class MyScheduler(SchedulerServicer):
             header="",
         )
 
+    def ListSnapshots(self, request, context):
+        url = request.url
+        logging.info(f'ListSnapshots: {url}')
+        snapshot = Snapshot(
+            sid = b'snapshot_id_1',
+            hash = b'snapshot_hash_1',
+            url = url,
+            timestamp = 42,
+            status = 0,
+        )
+        return SnapshotList([snapshot, snapshot])
+
     # def SaveUrl(self, request, context):
     #     logging.info(f'Save url request: {request.url}')
     #     if not self.worker_pool:
