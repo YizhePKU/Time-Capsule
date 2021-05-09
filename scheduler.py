@@ -139,9 +139,8 @@ class MyScheduler(SchedulerServicer):
         RequestInfo = scheduler_pb2.RequestInfo
         return RequestInfo(status=RequestInfo.Status.done)
 
-    @requires_token
     def FetchSnapshot(self, request, context):
-        logging.info(f'FetchSnapshot: openid={context.openid}')
+        logging.info(f'FetchSnapshot')
         return Content(
             sid=b'sid1',
             html="<body>Hello world</body>",
