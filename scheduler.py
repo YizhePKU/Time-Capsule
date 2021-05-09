@@ -1,3 +1,4 @@
+import os
 import threading
 import sqlite3
 import uuid
@@ -218,11 +219,12 @@ class MyScheduler(SchedulerServicer):
 def serve(port=8000):
     server = grpc.server(ThreadPoolExecutor(max_workers=10))
     add_SchedulerServicer_to_server(MyScheduler(), server)
-    server.add_insecure_port(f'127.0.0.1:{port}')
+    server.add_insecure_port(f'0.0.0.0:{port}')
     server.start()
-    logging.info(f'Server started at port {port}')
+    logging.info(f'Scheduler listening at 0.0.0.0:{port}')
     server.wait_for_termination()
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    serve()
+    port = os.getenv('SCHEDULER_PORT', 8848)
+    serve(port)
