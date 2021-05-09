@@ -97,7 +97,7 @@ class MyScheduler(SchedulerServicer):
 
     @requires_token
     def GetArticleInfo(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
+        logging.info(f'GetArticleInfo: openid={context.openid}')
         aid = request.aid
         snapshot1 = Snapshot(
             sid=b'sid1',
@@ -118,30 +118,30 @@ class MyScheduler(SchedulerServicer):
 
     @requires_token
     def CreateArticle(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
+        logging.info(f'CreateArticle: openid={context.openid}')
         return scheduler_pb2.ArticleId(aid=b'aid1')
 
     @requires_token
     def AddUrlsToArticle(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
+        logging.info(f'AddUrlsToArticle: openid={context.openid}')
         return
         yield
 
     @requires_token
     def DeleteArticle(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
+        logging.info(f'DeleteArticle: openid={context.openid}')
         pass
 
     @requires_token
     def GetRequestInfo(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
+        logging.info(f'GetRequestInfo: openid={context.openid}')
         rid = request.rid
         RequestInfo = scheduler_pb2.RequestInfo
         return RequestInfo(status=RequestInfo.Status.done)
 
     @requires_token
     def FetchSnapshot(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
+        logging.info(f'FetchSnapshot: openid={context.openid}')
         return Content(
             sid=b'sid1',
             html="<body>Hello world</body>",
