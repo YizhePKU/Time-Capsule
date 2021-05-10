@@ -158,8 +158,8 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'MarkAllAsRead')
         return Empty()
 
-    def FetchSnapshot(self, request, context):
-        logging.info(f'FetchSnapshot')
+    def GetSnapshot(self, request, context):
+        logging.info(f'GetSnapshot')
         return co.Content(
             id=b'sdfewjfewfsdf',
             html="<body>Hello world</body>",
