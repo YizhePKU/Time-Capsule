@@ -113,7 +113,7 @@ class MyScheduler(SchedulerServicer):
     @requires_token
     def CreateArticle(self, request, context):
         logging.info(f'CreateArticle')
-        return co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123, snapshots=[]),
+        return co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123),
 
     @requires_token
     def DeleteArticle(self, request, context):
