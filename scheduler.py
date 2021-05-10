@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 import sqlite3
 import uuid
@@ -10,13 +11,18 @@ import grpc
 from grpc import StatusCode
 
 import ledger
-from capsule.common_pb2 import Empty, Snapshot, Content, Endpoint
+
+from capsule import common_pb2 as co
+from capsule.common_pb2 import Empty
+
+from capsule import scheduler_pb2 as sc
 from capsule.scheduler_pb2_grpc import SchedulerServicer, add_SchedulerServicer_to_server
-from capsule import scheduler_pb2
+
+from capsule import worker_pb2 as wo
 from capsule.worker_pb2_grpc import WorkerStub
-from capsule import worker_pb2
+
+from capsule import storage_pb2 as st
 from capsule.storage_pb2_grpc import StorageStub
-from capsule import storage_pb2
 
 db_file = 'db/test.db'
 
@@ -91,77 +97,67 @@ class MyScheduler(SchedulerServicer):
         return Empty()
 
     @requires_token
-    def GetUserInfo(self, request, context):
-        logging.info(f'GetUserInfo: openid={context.openid}')
-        return scheduler_pb2.UserInfo(name="MyUserName", aids=[b'aid1', b'aid2'], rids=[b'rid1', b'rid2'])
-
-    @requires_token
-    def GetArticleInfo(self, request, context):
-        logging.info(f'GetArticleInfo: openid={context.openid}')
-        aid = request.aid
-        snapshot1 = Snapshot(
-            sid=b'sid1',
-            hash=b'hash1',
-            url='url1.com',
-            timestamp=1234,
-            status=Snapshot.Status.ok,
-        )
-        snapshot2 = Snapshot(
-            sid=b'sid2',
-            hash=b'hash2',
-            url='url2.com',
-            timestamp=5678,
-            status=Snapshot.Status.dead,
-        )
-        snapshots = [snapshot1, snapshot2]
-        return scheduler_pb2.ArticleInfo(name="MyArticleName", snapshots=snapshots)
+    def GetUserData(self, request, context):
+        logging.info(f'GetUserData: openid={context.openid}')
+        username = 'YizhePKU'
+        snapshots = [
+            co.Snapshot(id=b'fekvlehflw', hash=b'flklkj3lkl', url='bing.com', timestamp=234234, status=co.Snapshot.Status.ok),
+            co.Snapshot(id=b'jlevlkwjl', hash=b'dfkwjvwll', url='github.com', timestamp=234234, status=co.Snapshot.Status.dead),
+        ]
+        articles = [
+            co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123, snapshots=snapshots),
+            co.Article(id=b'afjekljbkjglkjk', title='Article 2', created_at= 123123, snapshots=snapshots),
+        ]
+        notifications = [
+            co.Notification(id=b'fdfheohfshe', created_at=123123, has_read=True, content="Message 1", type=co.Notification.Type.info),
+            co.Notification(id=b'dfjkefovnwon', created_at=123123, has_read=False, content="Message 2", type=co.Notification.Type.error),
+        ]
+        return co.UserData(username=username, articles=articles, notifications=notifications)
 
     @requires_token
     def CreateArticle(self, request, context):
-        logging.info(f'CreateArticle: openid={context.openid}')
-        return scheduler_pb2.ArticleId(aid=b'aid1')
-
-    @requires_token
-    def AddUrlsToArticle(self, request, context):
-        logging.info(f'AddUrlsToArticle: openid={context.openid}')
-        return Empty()
-
-    @requires_token
-    def RemoveUrlsFromArticle(self, request, context):
-        logging.info(f'RemoveUrlFromArticle: openid{context.openid}')
-        return Empty()
+        logging.info(f'CreateArticle')
+        return co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123, snapshots=[]),
 
     @requires_token
     def DeleteArticle(self, request, context):
-        logging.info(f'DeleteArticle: openid={context.openid}')
+        logging.info(f'DeleteArticle')
         return Empty()
 
     @requires_token
-    def GetRequestInfo(self, request, context):
-        logging.info(f'GetRequestInfo: openid={context.openid}')
-        rid = request.rid
-        RequestInfo = scheduler_pb2.RequestInfo
-        return RequestInfo(status=RequestInfo.Status.done)
+    def ChangeArticleTitle(self, request, context):
+        logging.info(f'ChangeArticleTitle')
+        return Empty()
 
     @requires_token
-    def GetNotifications(self, request, context):
-        hello = scheduler_pb2.Notification(
-            nid=b'nid1',
-            type=scheduler_pb2.Notification.Type.INFO,
-            timestamp=123123,
-            content='Hello from scheduler',
-            has_read=False,
-        )
-        return scheduler_pb2.NotificationList([hello])
+    def RemoveSnapshotFromArticle(self, request, context):
+        logging.info(f'RemoveSnapshotFromArticle')
+        return Empty()
 
     @requires_token
-    def MarkAsRead(self, request, context):
-        return
+    def Capture(self, request, context):
+        logging.info(f'Capture')
+        return Empty()
+
+    @requires_token
+    def GetActiveTasks(self, request, context):
+        logging.info(f'GetActiveTasks')
+        task = co.Task(id=b'afwfh32ofho2ho', url='bing.com', status=co.Task.Status.working, article_id=b'asfhejwef')
+        tasks = [task]
+        while True:
+            yield
+            tasks.append(task)
+            time.sleep(2)
+
+    @requires_token
+    def MarkAllAsRead(self, request, context):
+        logging.info(f'MarkAllAsRead')
+        return Empty()
 
     def FetchSnapshot(self, request, context):
         logging.info(f'FetchSnapshot')
-        return Content(
-            sid=b'sid1',
+        return co.Content(
+            id=b'sdfewjfewfsdf',
             html="<body>Hello world</body>",
             header="",
         )
@@ -169,14 +165,14 @@ class MyScheduler(SchedulerServicer):
     def ListSnapshots(self, request, context):
         url = request.url
         logging.info(f'ListSnapshots: {url}')
-        snapshot = Snapshot(
-            sid = b'snapshot_id_1',
-            hash = b'snapshot_hash_1',
+        snapshot = co.Snapshot(
+            sid = b'asdfhelhlsfje',
+            hash = b'sdfehwlldfj',
             url = url,
             timestamp = 42,
-            status = 0,
+            status = co.Snapshot.Status.ok,
         )
-        return SnapshotList([snapshot, snapshot])
+        return co.Snapshots([snapshot, snapshot])
 
     # def SaveUrl(self, request, context):
     #     logging.info(f'Save url request: {request.url}')
