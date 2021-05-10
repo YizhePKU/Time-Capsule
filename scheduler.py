@@ -133,7 +133,7 @@ class MyScheduler(SchedulerServicer):
     @requires_token
     def GetArticleSnapshots(self, request, context):
         logging.info(f'GetArticleSnapshots')
-        return sc.GetArticleSnapshotsResponse([
+        return sc.GetArticleSnapshotsResponse(snapshots=[
             co.Snapshot(id=b'fekvlehflw', hash=b'flklkj3lkl', url='bing.com', timestamp=234234, status=co.Snapshot.Status.ok),
             co.Snapshot(id=b'jlevlkwjl', hash=b'dfkwjvwll', url='github.com', timestamp=234234, status=co.Snapshot.Status.dead),
         ])
