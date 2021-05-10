@@ -169,7 +169,7 @@ class MyScheduler(SchedulerServicer):
         url = request.url
         logging.info(f'ListSnapshots: {url}')
         snapshot = co.Snapshot(
-            sid = b'asdfhelhlsfje',
+            id = b'asdfhelhlsfje',
             hash = b'sdfehwlldfj',
             url = url,
             timestamp = 42,
