@@ -46,6 +46,11 @@ message AddUrlsRequest {
     repeated string urls = 2;
 }
 
+message RemoveUrlsRequest {
+    bytes aid = 1;
+    repeated string urls = 2;
+}
+
 message ArticleInfo {
     string title = 1;
     repeated Snapshot snapshots = 2;
@@ -85,6 +90,7 @@ service Scheduler {
     rpc GetArticleInfo (ArticleId) returns (ArticleInfo);
     rpc CreateArticle (CreateArticleRequest) returns (ArticleId);
     rpc AddUrlsToArticle (AddUrlsRequest) returns (Empty);
+    rpc RemoveUrlsToArticle (RemoveUrlsRequest) returns (Empty);
     rpc DeleteArticle (ArticleId) returns (Empty);
     rpc GetRequestInfo (RequestId) returns (RequestInfo);
     rpc GetMessages (Empty) returns (MessageList);
