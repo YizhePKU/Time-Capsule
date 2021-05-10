@@ -34,7 +34,7 @@ message GetArticleSnapshotsRequest {
     bytes article_id = 1;
 }
 
-message GetArticleSnapshotsRequest {
+message GetArticleSnapshotsResponse {
     repeated Snapshot snapshots = 1;
 }
 
