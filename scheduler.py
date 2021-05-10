@@ -133,13 +133,13 @@ class MyScheduler(SchedulerServicer):
             username = db.execute('SELECT name FROM users WHERE openid = ?', (openid,)).fetchone().name
 
             articles = []
-            for row in db.execute('SELECT id, title, created_at FROM articles WHERE articles.user = ?', (openid,))
-                cnt = db.execute('SELECT COUNT(*) FROM snapshots WHERE snapshots.article = ?', (row.id,)).fetchone()[0]
-                articles.append(co.Article(id=row.id, title=row.title, created_at=row.created_at, snapshot_count=cnt))
+            for row in db.execute('SELECT id, title, created_at FROM articles WHERE articles.user = ?', (openid,)):
+                cnt = db.execute('SELECT COUNT(*) FROM snapshots WHERE snapshots.article = ?', (row['id'],)).fetchone()[0]
+                articles.append(co.Article(id=row['id'], title=row['title'], created_at=row['created_at'], snapshot_count=cnt))
 
             notifications = []
             for r in db.execute('SELECT id, created_at, has_read, content, type FROM notifications WHERE user = ?', (openid,)):
-                notifications.append(co.Notification(id=r.id, created_at=r.created_at, has_read=r.has_read, content=r.content, type=r.type))
+                notifications.append(co.Notification(id=r['id'], created_at=r['created_at'], has_read=r['has_read'], content=r['content'], type=r['type']))
 
         return co.UserData(username=username, articles=articles, notifications=notifications)
 
@@ -196,7 +196,7 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_connect() as db:
             for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2', (article_id, openid)):
-                snapshots.append(co.Snapshot(id=r.uuid, hash=r.hash, url=r.url, timestamp=r.timestamp, status.co.Snapshot.Status.ok))
+                snapshots.append(co.Snapshot(id=r['uuid'], hash=r['hash'], url=r['url'], timestamp=r['timestamp'], status=co.Snapshot.Status.ok))
         return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
 
     @requires_token
@@ -207,7 +207,7 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'Capture: {url}')
 
         worker = self.select_worker()
-        content = list(worker.Crawl(wo.CrawlRequest([url]))[0].content
+        content = list(worker.Crawl(wo.CrawlRequest([url])))[0].content
 
         storage = self.select_storage()
         storage_key = uuid()
@@ -219,7 +219,7 @@ class MyScheduler(SchedulerServicer):
         ledger_key = ledger.add(_hash)
 
         with self.db_connect() as db:
-            db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key)
+            db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
             db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
         return Empty()
 
@@ -252,6 +252,7 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_connect() as db:
             for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.url = ?', (url,)):
+                snapshots.append(co.Snapshot(id=r['uuid'], hash=r['hash'], url=r['url'], timestamp=r['timestamp'], status=co.Snapshot.Status.ok))
         return sc.Snapshots(snapshots=snapshots)
 
     def RegisterWorker(self, request, context):
