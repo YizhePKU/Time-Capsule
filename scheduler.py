@@ -124,7 +124,7 @@ class MyScheduler(SchedulerServicer):
     @requires_token
     def AddUrlsToArticle(self, request, context):
         logging.info(f'AddUrlsToArticle: openid={context.openid}')
-        return
+        return Empty()
 
     @requires_token
     def RemoveUrlsFromArticle(self, request, context):
@@ -134,7 +134,7 @@ class MyScheduler(SchedulerServicer):
     @requires_token
     def DeleteArticle(self, request, context):
         logging.info(f'DeleteArticle: openid={context.openid}')
-        pass
+        return Empty()
 
     @requires_token
     def GetRequestInfo(self, request, context):
