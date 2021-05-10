@@ -175,7 +175,7 @@ class MyScheduler(SchedulerServicer):
             timestamp = 42,
             status = co.Snapshot.Status.ok,
         )
-        return sc.Snapshots([snapshot, snapshot])
+        return sc.Snapshots(snapshots=[snapshot, snapshot])
 
     # def SaveUrl(self, request, context):
     #     logging.info(f'Save url request: {request.url}')
