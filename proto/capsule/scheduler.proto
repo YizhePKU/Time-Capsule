@@ -51,17 +51,29 @@ message ArticleInfo {
     repeated Snapshot snapshots = 2;
 }
     
-message CompletionNotice {
-    bytes sid = 1;
-    bool success = 2;
-}
-
 message Query {
     string url = 1;
 }
 
 message SnapshotList {
     repeated Snapshot snapshots = 1;
+}
+
+message Message {
+    enum Type {
+        INFO = 0;
+        ERROR = 1;
+    }
+
+    bytes mid = 1;
+    Type type = 2;
+    uint64 timestamp = 3;
+    string content = 4;
+    bool has_read = 5;
+}
+
+message MessageList {
+    repeated Message messages = 1;
 }
 
 service Scheduler {
@@ -72,9 +84,10 @@ service Scheduler {
     rpc GetUserInfo (Empty) returns (UserInfo);
     rpc GetArticleInfo (ArticleId) returns (ArticleInfo);
     rpc CreateArticle (CreateArticleRequest) returns (ArticleId);
-    rpc AddUrlsToArticle (AddUrlsRequest) returns (stream CompletionNotice);
+    rpc AddUrlsToArticle (AddUrlsRequest) returns (Empty);
     rpc DeleteArticle (ArticleId) returns (Empty);
     rpc GetRequestInfo (RequestId) returns (RequestInfo);
+    rpc GetMessages (Empty) returns (MessageList);
 
     // These interfaces are open to the public.
     rpc FetchSnapshot (Snapshot) returns (Content);

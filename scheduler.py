@@ -125,7 +125,6 @@ class MyScheduler(SchedulerServicer):
     def AddUrlsToArticle(self, request, context):
         logging.info(f'AddUrlsToArticle: openid={context.openid}')
         return
-        yield
 
     @requires_token
     def DeleteArticle(self, request, context):
