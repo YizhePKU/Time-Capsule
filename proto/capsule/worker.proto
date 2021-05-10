@@ -5,10 +5,14 @@ package capsule;
 import "capsule/common.proto";
 
 message CrawlRequest {
-    repeated bytes sids = 1;
-    repeated string urls = 2;
+    repeated string urls = 1;
+}
+
+message CrawlResponse {
+    string url = 1;
+    Content content = 2;
 }
 
 service Worker {
-    rpc CrawlUrl(CrawlRequest) returns (stream Content);
+    rpc Crawl(CrawlRequest) returns (stream CrawlResponse);
 }

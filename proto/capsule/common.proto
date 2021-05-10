@@ -65,8 +65,14 @@ message Snapshot {
 }
 
 message Content {
-    string html = 1;
-    string header = 2;
+    enum Type {
+        html = 0;
+        pdf = 1;
+        video = 2;
+    }
+
+    Type type = 1;
+    bytes data = 2;
 }
 
 message Endpoint {
