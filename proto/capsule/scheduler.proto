@@ -4,102 +4,67 @@ package capsule;
 
 import "capsule/common.proto";
 
-message LoginRequest {
-    string token = 1;
-}
-
-message LoginConfirmation {
-    string token = 1;
-    string openid = 2;
-    string name = 3;
-}
-
-message UserInfo {
-    string name = 1;
-    repeated bytes aids = 2;
-    repeated bytes rids = 3;
-}
-
-message ArticleId {
-    bytes aid = 1;
-}
-
-message RequestId {
-    bytes rid = 1;
-}
-
-message RequestInfo {
-    enum Status {
-        done = 0;
-        working = 1;
-        error = 2;
-    }
-    Status status = 1;
-}
-
-message CreateArticleRequest {
-    string name = 1;
-}
-
-message AddUrlsRequest {
-    bytes aid = 1;
-    repeated string urls = 2;
-}
-
-message RemoveUrlsRequest {
-    bytes aid = 1;
-    repeated string urls = 2;
-}
-
-message ArticleInfo {
-    string title = 1;
-    repeated Snapshot snapshots = 2;
-}
-    
-message Query {
+message ListSnapshotsRequest {
     string url = 1;
 }
 
-message SnapshotList {
+message Snapshots {
     repeated Snapshot snapshots = 1;
 }
 
-message Notification {
-    enum Type {
-        INFO = 0;
-        ERROR = 1;
-    }
-
-    bytes nid = 1;
-    Type type = 2;
-    uint64 timestamp = 3;
-    string content = 4;
-    bool has_read = 5;
+message CreateArticleRequest {
+    string title = 1;
 }
 
-message NotificationList {
-    repeated Notification notifications = 1;
+message DeleteArticleRequest {
+    bytes article_id = 1;
+}
+
+message ChangeArticleTitleRequest {
+    bytes article_id = 1;
+    string title = 2;
+}
+
+message RemoveSnapshotFromArticleRequest {
+    bytes article_id = 1;
+    bytes snapshot_id = 2;
+}
+
+message CaptureRequest {
+    bytes article_id = 1;
+    repeated string urls = 2;
+}
+
+message CurrentTasks {
+    repeated Task tasks = 1;
 }
 
 service Scheduler {
+    // Wechat login
     rpc TryLogin (LoginRequest) returns (Empty);
     rpc ConfirmLogin (LoginConfirmation) returns (Empty);
 
-    // These interfaces requires token in their context.
-    rpc GetUserInfo (Empty) returns (UserInfo);
-    rpc GetArticleInfo (ArticleId) returns (ArticleInfo);
-    rpc CreateArticle (CreateArticleRequest) returns (ArticleId);
-    rpc AddUrlsToArticle (AddUrlsRequest) returns (Empty);
-    rpc RemoveUrlsToArticle (RemoveUrlsRequest) returns (Empty);
-    rpc DeleteArticle (ArticleId) returns (Empty);
-    rpc GetRequestInfo (RequestId) returns (RequestInfo);
-    rpc GetNotifications (Empty) returns (NotificationList);
-    rpc MarkAsRead (NotificationList) returns (Empty);
+    // Public snapshots
+    rpc ListSnapshots (ListSnapshotsRequest) returns (Snapshots);
+    rpc GetSnapshot (Snapshot) returns (Content);
 
-    // These interfaces are open to the public.
-    rpc FetchSnapshot (Snapshot) returns (Content);
-    rpc ListSnapshot (Query) returns (SnapshotList);
+    // User interface
+    rpc GetUserData (Empty) returns (UserData);
 
+    // Articles
+    rpc CreateArticle (CreateArticleRequest) returns (Article);
+    rpc DeleteArticle (DeleteArticleRequest) returns (Empty);
+    rpc ChangeArticleTitle (ChangeArticleTitleRequest) returns (Empty);
+    rpc RemoveSnapshotFromArticle (RemoveSnapshotFromArticleRequest) returns (Empty);
+
+    // Tasks
+    rpc Capture (CaptureRequest) returns (Empty);
+    rpc GetActiveTasks (Empty) returns (stream CurrentTasks);
+
+    // Notifications
+    rpc MarkAllAsRead (Empty) returns (Empty);
+
+    // Workers and Storage
     rpc RegisterWorker (Endpoint) returns (Empty);
     rpc RegisterStorage (Endpoint) returns (Empty);
 }
