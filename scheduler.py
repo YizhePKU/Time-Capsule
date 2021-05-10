@@ -6,6 +6,7 @@ import uuid
 import hashlib
 import logging
 from time import time as unix_time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import grpc
 from grpc import StatusCode
@@ -25,6 +26,7 @@ from capsule import storage_pb2 as st
 from capsule.storage_pb2_grpc import StorageStub
 
 db_file = 'db/test.db'
+schema_file = 'db/schema'
 
 def make_uuid():
     return uuid.uuid4().bytes
@@ -50,8 +52,19 @@ def requires_token(f):
         return f(self, request, context)
     return inner
 
+def initialize_db():
+    path = Path(db_file)
+    if not path.exists():
+        path.touch()
+        conn = sqlite3.connect(db_file)
+        with open(schema_file) as file:
+            schema = file.read()
+            conn.executescript(schema)
+
 class MyScheduler(SchedulerServicer):
     def __init__(self):
+        initialize_db()
+
         # Protects try_logins and sessions
         self.lock = threading.Lock()
         # token -> event
@@ -66,6 +79,14 @@ class MyScheduler(SchedulerServicer):
         conn = sqlite3.connect(db_file)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def select_worker(self):
+        assert len(self.worker_pool) > 0
+        return self.worker_pool[0]
+
+    def select_storage(self):
+        assert len(self.storage_pool) > 0
+        return self.storage_pool[0]
     
     def TryLogin(self, request, context):
         token = request.token
@@ -88,59 +109,118 @@ class MyScheduler(SchedulerServicer):
     def ConfirmLogin(self, request, context):
         token = request.token
         openid = request.openid
+        username = request.name
+
         logging.info(f'ConfirmLogin: token={token}, openid={openid}')
         with self.lock:
             if token not in self.try_logins:
                 context.abort(StatusCode.INVALID_ARGUMENT, "Non-existing token")
             self.try_logins[token].set()
             self.sessions[token] = openid
+
+        with self.db_connect() as db:
+            cnt = db.execute('SELECT COUNT(*) FROM users WHERE users.openid = ?', (openid,)).fetchone()[0]
+            if cnt == 0:
+                db.execute('INSERT INTO users VALUES (?,?)', (openid, username))
         return Empty()
 
     @requires_token
     def GetUserData(self, request, context):
-        logging.info(f'GetUserData: openid={context.openid}')
-        username = 'YizhePKU'
-        articles = [
-            co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123, snapshot_count=2),
-            co.Article(id=b'afjekljbkjglkjk', title='Article 2', created_at= 123123, snapshot_count=5),
-        ]
-        notifications = [
-            co.Notification(id=b'fdfheohfshe', created_at=123123, has_read=True, content="Message 1", type=co.Notification.Type.info),
-            co.Notification(id=b'dfjkefovnwon', created_at=123123, has_read=False, content="Message 2", type=co.Notification.Type.error),
-        ]
+        openid = context.openid
+        logging.info(f'GetUserData: openid={openid}')
+
+        with self.db_connect() as db:
+            username = db.execute('SELECT name FROM users WHERE openid = ?', (openid,)).fetchone().name
+
+            articles = []
+            for row in db.execute('SELECT id, title, created_at FROM articles WHERE articles.user = ?', (openid,))
+                cnt = db.execute('SELECT COUNT(*) FROM snapshots WHERE snapshots.article = ?', (row.id,)).fetchone()[0]
+                articles.append(co.Article(id=row.id, title=row.title, created_at=row.created_at, snapshot_count=cnt))
+
+            notifications = []
+            for r in db.execute('SELECT id, created_at, has_read, content, type FROM notifications WHERE user = ?', (openid,)):
+                notifications.append(co.Notification(id=r.id, created_at=r.created_at, has_read=r.has_read, content=r.content, type=r.type))
+
         return co.UserData(username=username, articles=articles, notifications=notifications)
 
     @requires_token
     def CreateArticle(self, request, context):
-        logging.info(f'CreateArticle')
-        return co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123),
+        openid = context.openid
+        title = request.title
+        logging.info(f'CreateArticle: title={title}')
+
+        _id = uuid()
+        timestamp = unix_time()
+        with self.db_connect() as db:
+            db.execute('INSERT INTO articles VALUES (?,?,?,?)', (_id, openid, timestamp, title))
+        return co.Article(id=_id, title=title, created_at=timestamp)
 
     @requires_token
     def DeleteArticle(self, request, context):
-        logging.info(f'DeleteArticle')
+        openid = context.openid
+        article_id = request.article_id
+        logging.info(f'DeleteArticle: id={article_id}')
+
+        with self.db_connect() as db:
+            db.execute('DELETE FROM articles WHERE articles.id = ? AND articles.user = ?', (article_id, openid))
         return Empty()
 
     @requires_token
     def ChangeArticleTitle(self, request, context):
-        logging.info(f'ChangeArticleTitle')
+        openid = context.openid
+        article_id = request.article_id
+        title = request.title
+        logging.info(f'ChangeArticleTitle: id={article_id}, new title={title}')
+
+        with self.db_connect() as db:
+            db.execute('UPDATE articles SET title = ? WHERE articles.id = ? AND articles.user = ?', (article_id, openid))
         return Empty()
 
     @requires_token
     def RemoveSnapshotFromArticle(self, request, context):
-        logging.info(f'RemoveSnapshotFromArticle')
+        openid = context.openid
+        article_id = request.article_id
+        snapshot_id = request.snapshot_id
+        logging.info(f'RemoveSnapshotFromArticle: article_id={article_id}, snapshot_id={snapshot_id}')
+
+        with self.db_connect() as db:
+            db.execute('DELETE FROM snapshots WHERE snapshots.uuid = ? AND snapshots.article = ?', (snapshot_id, article_id))
         return Empty()
 
     @requires_token
     def GetArticleSnapshots(self, request, context):
-        logging.info(f'GetArticleSnapshots')
-        return sc.GetArticleSnapshotsResponse(snapshots=[
-            co.Snapshot(id=b'fekvlehflw', hash=b'flklkj3lkl', url='bing.com', timestamp=234234, status=co.Snapshot.Status.ok),
-            co.Snapshot(id=b'jlevlkwjl', hash=b'dfkwjvwll', url='github.com', timestamp=234234, status=co.Snapshot.Status.dead),
-        ])
+        openid = context.openid
+        article_id = request.article_id
+        logging.info(f'GetArticleSnapshots: article_id={article_id}')
+
+        snapshots = []
+        with self.db_connect() as db:
+            for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2', (article_id, openid)):
+                snapshots.append(co.Snapshot(id=r.uuid, hash=r.hash, url=r.url, timestamp=r.timestamp, status.co.Snapshot.Status.ok))
+        return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
 
     @requires_token
     def Capture(self, request, context):
-        logging.info(f'Capture')
+        openid = context.openid
+        url = request.url
+        article_id = request.article_id
+        logging.info(f'Capture: {url}')
+
+        worker = self.select_worker()
+        content = list(worker.Crawl(wo.CrawlRequest([url]))[0].content
+
+        storage = self.select_storage()
+        storage_key = uuid()
+        storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
+
+        timestamp = unix_time()
+        _id = uuid()
+        _hash = sha256(content.data)
+        ledger_key = ledger.add(_hash)
+
+        with self.db_connect() as db:
+            db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key)
+            db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
         return Empty()
 
     @requires_token
@@ -168,67 +248,11 @@ class MyScheduler(SchedulerServicer):
     def ListSnapshots(self, request, context):
         url = request.url
         logging.info(f'ListSnapshots: {url}')
-        snapshot = co.Snapshot(
-            id = b'asdfhelhlsfje',
-            hash = b'sdfehwlldfj',
-            url = url,
-            timestamp = 42,
-            status = co.Snapshot.Status.ok,
-        )
-        return sc.Snapshots(snapshots=[snapshot, snapshot])
 
-    # def SaveUrl(self, request, context):
-    #     logging.info(f'Save url request: {request.url}')
-    #     if not self.worker_pool:
-    #         context.abort(StatusCode.Unavailable, "No available worker")
-    #     if not self.storage_pool:
-    #         context.abort(StatusCode.Unavailable, "No available storage")
-
-    #     # Let worker crawl the webpage
-    #     with grpc.insecure_channel(self.worker_pool[0]) as chan:
-    #         worker_stub = WorkerStub(chan)
-    #         data = worker_stub.CrawlUrl(Url(url=request.url)).data
-
-    #     # Create metadata
-    #     uuid = make_uuid()
-    #     url = request.url
-    #     _hash = sha256(data)
-    #     timestamp = int(unix_time())
-    #     ledger_key = b''
-    #     meta = Snapshot(uuid=uuid, hash=_hash, url=Url(url=url), timestamp=timestamp)
-
-    #     # Store the webpage and metadata to storage
-    #     with grpc.insecure_channel(self.storage_pool[0]) as chan:
-    #         storage_stub = StorageStub(chan)
-    #         storage_stub.StoreContent(Content(meta=meta, data=data))
-
-    #     cmd = 'INSERT INTO snapshots (uuid, url, hash, timestamp, ledger_key) VALUES (?, ?, ?, ?, ?)'
-
-    #     with self.db_connect() as db:
-    #         db.execute(cmd, (uuid, url, _hash, timestamp, ledger_key))
-    #     return Empty()
-
-    # def ListSnapshots(self, request, context):
-    #     url = request.url
-    #     cmd = 'SELECT uuid, hash, timestamp FROM snapshots WHERE url = ?'
-    #     snapshots = []
-    #     with self.db_connect() as db:
-    #         for row in db.execute(cmd, (url,)):
-    #             snapshots.append(Snapshot(
-    #                 uuid = row['uuid'],
-    #                 url = Url(url=url),
-    #                 hash = row['hash'],
-    #                 timestamp = int(row['timestamp']),
-    #             ))
-    #     return SnapshotList(snapshots=snapshots)
-
-    # def FetchSnapshot(self, request, context):
-    #     if not self.storage_pool:
-    #         context.abort("No available storage")
-    #     with grpc.insecure_channel(self.storage_pool[0]) as chan:
-    #         storage_stub = StorageStub(chan)
-    #         content = storage_stub.GetContent(request)
-    #     return content
+        snapshots = []
+        with self.db_connect() as db:
+            for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.url = ?', (url,)):
+        return sc.Snapshots(snapshots=snapshots)
 
     def RegisterWorker(self, request, context):
         addr = request.addr

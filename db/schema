@@ -1,5 +1,40 @@
+CREATE TABLE users (
+    openid TEXT NOT NULL,
+    name TEXT NOT NULL
+);
+CREATE UNIQUE INDEX users_openid ON users (openid);
+
+CREATE TABLE articles (
+    id BLOB NOT NULL,
+    user TEXT NOT NULL,
+    created_at INT NOT NULL,
+    title TEXT NOT NULL
+);
+CREATE UNIQUE INDEX articles_id ON articles (id);
+CREATE UNIQUE INDEX articles_user ON articles (user);
+
+CREATE TABLE tasks (
+    id BLOB NOT NULL,
+    user TEXT NOT NULL,
+    url TEXT NOT NULL,
+    status INT NOT NULL, -- waiting = 0, working = 1
+    article_id BLOB NOT NULL
+);
+CREATE UNIQUE INDEX tasks_user ON tasks (user);
+
+CREATE TABLE notifications (
+    id BLOB NOT NULL,
+    user TEXT NOT NULL,
+    type INT NOT NULL, -- info = 0, error = 1
+    created_at INT NOT NULL,
+    has_read INT NOT NULL,
+    content TEXT NOT NULL
+);
+CREATE UNIQUE INDEX notifications_user ON notifications (user);
+
 CREATE TABLE snapshots (
     uuid BLOB NOT NULL,
+    article BLOB NOT NULL,
     url TEXT NOT NULL,
     hash BLOB NOT NULL,
     timestamp INTEGER NOT NULL,
@@ -7,3 +42,11 @@ CREATE TABLE snapshots (
 );
 CREATE UNIQUE INDEX snapshots_uuid ON snapshots (uuid);
 CREATE INDEX snapshots_url ON snapshots (url);
+CREATE INDEX snapshots_article ON snapshots (article);
+
+CREATE TABLE data (
+    snapshot BLOB NOT NULL,
+    type INT NOT NULL, -- html = 0, pdf = 1, video = 2
+    storage_key BLOB NOT NULL
+);
+CREATE INDEX data_snapshot ON data (snapshot);
