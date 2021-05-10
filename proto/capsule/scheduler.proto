@@ -30,6 +30,14 @@ message RemoveSnapshotFromArticleRequest {
     bytes snapshot_id = 2;
 }
 
+message GetArticleSnapshotsRequest {
+    bytes article_id = 1;
+}
+
+message GetArticleSnapshotsRequest {
+    repeated Snapshot snapshots = 1;
+}
+
 message CaptureRequest {
     bytes article_id = 1;
     repeated string urls = 2;
@@ -56,6 +64,7 @@ service Scheduler {
     rpc DeleteArticle (DeleteArticleRequest) returns (Empty);
     rpc ChangeArticleTitle (ChangeArticleTitleRequest) returns (Empty);
     rpc RemoveSnapshotFromArticle (RemoveSnapshotFromArticleRequest) returns (Empty);
+    rpc GetArticleSnapshots (GetArticleSnapshotsRequest) returns (GetArticleSnapshotsResponse);
 
     // Tasks
     rpc Capture (CaptureRequest) returns (Empty);

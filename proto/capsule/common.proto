@@ -24,7 +24,7 @@ message Article {
     bytes id = 1;
     string title = 2;
     uint64 created_at = 3;
-    repeated Snapshot snapshots = 4;
+    uint64 snapshot_count = 4;
 }
 
 message Task {

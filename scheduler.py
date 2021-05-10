@@ -100,13 +100,9 @@ class MyScheduler(SchedulerServicer):
     def GetUserData(self, request, context):
         logging.info(f'GetUserData: openid={context.openid}')
         username = 'YizhePKU'
-        snapshots = [
-            co.Snapshot(id=b'fekvlehflw', hash=b'flklkj3lkl', url='bing.com', timestamp=234234, status=co.Snapshot.Status.ok),
-            co.Snapshot(id=b'jlevlkwjl', hash=b'dfkwjvwll', url='github.com', timestamp=234234, status=co.Snapshot.Status.dead),
-        ]
         articles = [
-            co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123, snapshots=snapshots),
-            co.Article(id=b'afjekljbkjglkjk', title='Article 2', created_at= 123123, snapshots=snapshots),
+            co.Article(id=b'afwfh32ofho2ho2', title='Article 1', created_at= 123123, snapshot_count=2),
+            co.Article(id=b'afjekljbkjglkjk', title='Article 2', created_at= 123123, snapshot_count=5),
         ]
         notifications = [
             co.Notification(id=b'fdfheohfshe', created_at=123123, has_read=True, content="Message 1", type=co.Notification.Type.info),
@@ -133,6 +129,14 @@ class MyScheduler(SchedulerServicer):
     def RemoveSnapshotFromArticle(self, request, context):
         logging.info(f'RemoveSnapshotFromArticle')
         return Empty()
+
+    @requires_token
+    def GetArticleSnapshots(self, request, context):
+        logging.info(f'GetArticleSnapshots')
+        return sc.GetArticleSnapshotsResponse([
+            co.Snapshot(id=b'fekvlehflw', hash=b'flklkj3lkl', url='bing.com', timestamp=234234, status=co.Snapshot.Status.ok),
+            co.Snapshot(id=b'jlevlkwjl', hash=b'dfkwjvwll', url='github.com', timestamp=234234, status=co.Snapshot.Status.dead),
+        ])
 
     @requires_token
     def Capture(self, request, context):
