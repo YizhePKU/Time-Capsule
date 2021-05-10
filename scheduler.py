@@ -161,7 +161,6 @@ class MyScheduler(SchedulerServicer):
     def GetSnapshot(self, request, context):
         logging.info(f'GetSnapshot')
         return co.Content(
-            id=b'sdfewjfewfsdf',
             html="<body>Hello world</body>",
             header="",
         )
