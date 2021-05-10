@@ -5,7 +5,7 @@ import sqlite3
 import uuid
 import hashlib
 import logging
-from time import time as unix_time
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import grpc
@@ -27,6 +27,9 @@ from capsule.storage_pb2_grpc import StorageStub
 
 db_file = 'db/test.db'
 schema_file = 'db/schema'
+
+def unix_time():
+    return int(time.time())
 
 def make_uuid():
     return uuid.uuid4().bytes
@@ -82,11 +85,13 @@ class MyScheduler(SchedulerServicer):
 
     def select_worker(self):
         assert len(self.worker_pool) > 0
-        return self.worker_pool[0]
+        chan = grpc.insecure_channel(self.worker_pool[0])
+        return WorkerStub(chan)
 
     def select_storage(self):
         assert len(self.storage_pool) > 0
-        return self.storage_pool[0]
+        chan = grpc.insecure_channel(self.storage_pool[0])
+        return StorageStub(chan)
     
     def TryLogin(self, request, context):
         token = request.token
@@ -130,7 +135,7 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'GetUserData: openid={openid}')
 
         with self.db_connect() as db:
-            username = db.execute('SELECT name FROM users WHERE openid = ?', (openid,)).fetchone().name
+            username = db.execute('SELECT name FROM users WHERE openid = ?', (openid,)).fetchone()['name']
 
             articles = []
             for row in db.execute('SELECT id, title, created_at FROM articles WHERE articles.user = ?', (openid,)):
@@ -149,7 +154,7 @@ class MyScheduler(SchedulerServicer):
         title = request.title
         logging.info(f'CreateArticle: title={title}')
 
-        _id = uuid()
+        _id = make_uuid()
         timestamp = unix_time()
         with self.db_connect() as db:
             db.execute('INSERT INTO articles VALUES (?,?,?,?)', (_id, openid, timestamp, title))
@@ -202,25 +207,27 @@ class MyScheduler(SchedulerServicer):
     @requires_token
     def Capture(self, request, context):
         openid = context.openid
-        url = request.url
+        urls = request.urls
         article_id = request.article_id
-        logging.info(f'Capture: {url}')
+        logging.info(f'Capture: {urls}')
 
         worker = self.select_worker()
-        content = list(worker.Crawl(wo.CrawlRequest([url])))[0].content
+        # We need to do this async
+        for res in worker.Crawl(wo.CrawlRequest(urls=urls)):
+            content = res.content
 
-        storage = self.select_storage()
-        storage_key = uuid()
-        storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
+            storage = self.select_storage()
+            storage_key = make_uuid()
+            storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
 
-        timestamp = unix_time()
-        _id = uuid()
-        _hash = sha256(content.data)
-        ledger_key = ledger.add(_hash)
+            timestamp = unix_time()
+            _id = make_uuid()
+            _hash = sha256(content.data)
+            ledger_key = ledger.add(_hash)
 
-        with self.db_connect() as db:
-            db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
-            db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
+            with self.db_connect() as db:
+                db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
+                db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
         return Empty()
 
     @requires_token
