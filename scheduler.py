@@ -149,7 +149,7 @@ class MyScheduler(SchedulerServicer):
         task = co.Task(id=b'afwfh32ofho2ho', url='bing.com', status=co.Task.Status.working, article_id=b'asfhejwef')
         tasks = [task]
         while True:
-            yield
+            yield tasks
             tasks.append(task)
             time.sleep(2)
 
