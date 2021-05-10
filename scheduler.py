@@ -143,6 +143,21 @@ class MyScheduler(SchedulerServicer):
         RequestInfo = scheduler_pb2.RequestInfo
         return RequestInfo(status=RequestInfo.Status.done)
 
+    @requires_token
+    def GetNotifications(self, request, context):
+        hello = scheduler_pb2.Notification(
+            nid=b'nid1',
+            type=scheduler_pb2.Notification.Type.INFO,
+            timestamp=123123,
+            content='Hello from scheduler',
+            has_read=False,
+        )
+        return scheduler_pb2.NotificationList([hello])
+
+    @requires_token
+    def MarkAsRead(self, request, context):
+        return
+
     def FetchSnapshot(self, request, context):
         logging.info(f'FetchSnapshot')
         return Content(

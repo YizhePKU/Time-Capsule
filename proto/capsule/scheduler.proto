@@ -93,7 +93,8 @@ service Scheduler {
     rpc RemoveUrlsToArticle (RemoveUrlsRequest) returns (Empty);
     rpc DeleteArticle (ArticleId) returns (Empty);
     rpc GetRequestInfo (RequestId) returns (RequestInfo);
-    rpc GetNorifications (Empty) returns (NotificationList);
+    rpc GetNotifications (Empty) returns (NotificationList);
+    rpc MarkAsRead (NotificationList) returns (Empty);
 
     // These interfaces are open to the public.
     rpc FetchSnapshot (Snapshot) returns (Content);
