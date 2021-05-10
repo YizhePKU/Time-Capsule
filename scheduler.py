@@ -146,7 +146,7 @@ class MyScheduler(SchedulerServicer):
     @requires_token
     def GetActiveTasks(self, request, context):
         logging.info(f'GetActiveTasks')
-        task = co.Task(id=b'afwfh32ofho2ho', url='bing.com', status=co.Task.Status.working, article_id=b'asfhejwef')
+        task = co.Task(id=b'afwfh32ofho2ho', url='bing.com', status=co.Task.Status.working, article_id=b'afwfh32ofho2ho2')
         tasks = [task]
         while True:
             yield sc.CurrentTasks(tasks=tasks)
