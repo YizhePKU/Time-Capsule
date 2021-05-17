@@ -8,6 +8,7 @@ import logging
 import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
 import grpc
 from grpc import StatusCode
 
@@ -25,63 +26,102 @@ from capsule.worker_pb2_grpc import WorkerStub
 from capsule import storage_pb2 as st
 from capsule.storage_pb2_grpc import StorageStub
 
-db_file = 'db/test.db'
-schema_file = 'db/schema'
-
-def unix_time():
+def make_timestamp():
     return int(time.time())
+
 
 def make_uuid():
     return uuid.uuid4().bytes
 
-def sha256(stuff: bytes):
-    m = hashlib.sha256(stuff)
-    return m.digest()
 
-def get_metadata(context):
-    return dict(context.invocation_metadata())
+def sha256(data: bytes):
+    return hashlib.sha256(data).digest()
+
+
+def db_connect():
+    db_path = Path('db/test.db')
+    schema_path = Path('db/schema')
+
+    # Initialize database if necessary
+    if not db_path.exists():
+        db_path.touch()
+        conn = sqlite3.connect(db_path)
+        with open(schema_path) as file:
+            schema = file.read()
+            conn.executescript(schema)
+    else:
+        conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 def requires_token(f):
+    '''Decorator that checks token in request metadata and puts an openid in context.'''
+    def _get_metadata(context):
+        return dict(context.invocation_metadata())
+
     def inner(self, request, context):
-        metadata = get_metadata(context)
+        metadata = _get_metadata(context)
         if 'token' not in metadata:
             context.abort(StatusCode.UNAUTHORIZED, "Auth token needed")
         token = metadata['token']
-        with self.lock:
-            if token not in self.sessions:
-                context.abort(StatusCode.UNAUTHORIZED, "Bad token")
-            else:
-                context.openid = self.sessions[token]
+        try:
+            context.openid = self.auth.get_openid(token)
+        except:
+            context.abort(StatusCode.UNAUTHORIZED, "Bad token")
         return f(self, request, context)
+
     return inner
 
-def initialize_db():
-    path = Path(db_file)
-    if not path.exists():
-        path.touch()
-        conn = sqlite3.connect(db_file)
-        with open(schema_file) as file:
-            schema = file.read()
-            conn.executescript(schema)
+
+class Auth:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.pending_tokens = {} # token -> event
+        self.confirmed_tokens = {} # token -> openid
+
+    def new_login_token(self, token):
+        '''Add a new token awaiting confirmation.
+           Returns whether confirmation is successful.
+           Raise if the token is invalid.
+        '''
+        with self.lock:
+            if token in self.pending_tokens or token in self.confirmed_tokens:
+                raise Exception()
+            event = threading.Event()
+            self.pending_tokens[token] = event
+
+        result = event.wait(timeout=30)
+        with self.lock:
+            del self.pending_tokens[token]
+        return result
+
+    def confirm_login_token(self, token, openid):
+        '''Confirm a token and associate it with an openid.
+           Raise if the token does not exist.
+        '''
+        with self.lock:
+            if token not in self.pending_tokens:
+                raise Exception()
+            self.pending_tokens[token].set()
+            self.confirmed_tokens[token] = openid
+
+    def get_openid(self, token):
+        '''Returns openid corresponding to a confirmed token.
+           Raise if the token does not exist.
+        '''
+        if token not in self.confirmed_tokens:
+            raise Exception()
+        return self.confirmed_tokens[token]
+
 
 class MyScheduler(SchedulerServicer):
     def __init__(self):
-        initialize_db()
-
-        # Protects try_logins and sessions
-        self.lock = threading.Lock()
-        # token -> event
-        self.try_logins = {}
-        # token -> openid
-        self.sessions = {}
+        self.auth = Auth()
+        self.task_monitor = TaskMonitor()
 
         self.worker_pool = []
         self.storage_pool = []
-
-    def db_connect(self):
-        conn = sqlite3.connect(db_file)
-        conn.row_factory = sqlite3.Row
-        return conn
 
     def select_worker(self):
         assert len(self.worker_pool) > 0
@@ -96,34 +136,27 @@ class MyScheduler(SchedulerServicer):
     def TryLogin(self, request, context):
         token = request.token
         logging.info(f'TryLogin: token={token}')
-        with self.lock:
-            if token in self.sessions:
-                context.abort(StatusCode.INVALID_ARGUMENT, "Token is in use")
-            if token in self.try_logins:
-                context.abort(StatusCode.INVALID_ARGUMENT, "Duplicate login request")
-            event = threading.Event()
-            self.try_logins[token] = event
-        confirmed = event.wait(timeout=30)
-        with self.lock:
-            del self.try_logins[token]
-        if confirmed:
-            return Empty()
-        else:
-            context.abort(StatusCode.DEADLINE_EXCEEDED, "Confirmation timeout")
+
+        try:
+            if self.auth.new_login_token(token):
+                return Empty()
+            else:
+                context.abort(StatusCode.DEADLINE_EXCEEDED, "Confirmation timeout")
+        except:
+            context.abort(StatusCode.INVALID_ARGUMENT, "Token is in use")
 
     def ConfirmLogin(self, request, context):
         token = request.token
         openid = request.openid
         username = request.name
-
         logging.info(f'ConfirmLogin: token={token}, openid={openid}')
-        with self.lock:
-            if token not in self.try_logins:
-                context.abort(StatusCode.INVALID_ARGUMENT, "Non-existing token")
-            self.try_logins[token].set()
-            self.sessions[token] = openid
 
-        with self.db_connect() as db:
+        try:
+            self.auth.confirm_login_token(token, openid)
+        except:
+            context.abort(StatusCode.INVALID_ARGUMENT, "Non-existing token")
+
+        with db_connect() as db:
             cnt = db.execute('SELECT COUNT(*) FROM users WHERE users.openid = ?', (openid,)).fetchone()[0]
             if cnt == 0:
                 db.execute('INSERT INTO users VALUES (?,?)', (openid, username))
@@ -134,7 +167,7 @@ class MyScheduler(SchedulerServicer):
         openid = context.openid
         logging.info(f'GetUserData: openid={openid}')
 
-        with self.db_connect() as db:
+        with db_connect() as db:
             username = db.execute('SELECT name FROM users WHERE openid = ?', (openid,)).fetchone()['name']
 
             articles = []
@@ -155,8 +188,8 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'CreateArticle: title={title}')
 
         _id = make_uuid()
-        timestamp = unix_time()
-        with self.db_connect() as db:
+        timestamp = make_timestamp()
+        with db_connect() as db:
             db.execute('INSERT INTO articles VALUES (?,?,?,?)', (_id, openid, timestamp, title))
         return co.Article(id=_id, title=title, created_at=timestamp)
 
@@ -166,7 +199,7 @@ class MyScheduler(SchedulerServicer):
         article_id = request.article_id
         logging.info(f'DeleteArticle: id={article_id}')
 
-        with self.db_connect() as db:
+        with db_connect() as db:
             db.execute('DELETE FROM articles WHERE articles.id = ? AND articles.user = ?', (article_id, openid))
         return Empty()
 
@@ -177,7 +210,7 @@ class MyScheduler(SchedulerServicer):
         title = request.title
         logging.info(f'ChangeArticleTitle: id={article_id}, new title={title}')
 
-        with self.db_connect() as db:
+        with db_connect() as db:
             db.execute('UPDATE articles SET title = ? WHERE articles.id = ? AND articles.user = ?', (article_id, openid))
         return Empty()
 
@@ -188,7 +221,7 @@ class MyScheduler(SchedulerServicer):
         snapshot_id = request.snapshot_id
         logging.info(f'RemoveSnapshotFromArticle: article_id={article_id}, snapshot_id={snapshot_id}')
 
-        with self.db_connect() as db:
+        with db_connect() as db:
             db.execute('DELETE FROM snapshots WHERE snapshots.uuid = ? AND snapshots.article = ?', (snapshot_id, article_id))
         return Empty()
 
@@ -199,10 +232,28 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'GetArticleSnapshots: article_id={article_id}')
 
         snapshots = []
-        with self.db_connect() as db:
+        with db_connect() as db:
             for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2', (article_id, openid)):
                 snapshots.append(co.Snapshot(id=r['uuid'], hash=r['hash'], url=r['url'], timestamp=r['timestamp'], status=co.Snapshot.Status.ok))
         return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
+
+    def _async_handle_responses(self, responses, storage, tasks):
+        for res in responses:
+            url = res.url
+            task_id = tasks[url]
+            content = res.content
+            storage_key = make_uuid()
+            storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
+
+            timestamp = make_timestamp()
+            _id = make_uuid()
+            _hash = sha256(content.data)
+            ledger_key = ledger.add(_hash)
+            with db_connect() as db:
+                db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
+                db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
+                db.execute('DELETE FROM tasks WHERE task_id = ?', (task_id,))
+            self.task_monitor.notify()
 
     @requires_token
     def Capture(self, request, context):
@@ -212,33 +263,37 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'Capture: {urls}')
 
         worker = self.select_worker()
-        # We need to do this async
-        for res in worker.Crawl(wo.CrawlRequest(urls=urls)):
-            content = res.content
-
-            storage = self.select_storage()
-            storage_key = make_uuid()
-            storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
-
-            timestamp = unix_time()
-            _id = make_uuid()
-            _hash = sha256(content.data)
-            ledger_key = ledger.add(_hash)
-
-            with self.db_connect() as db:
-                db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
-                db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
+        storage = self.select_storage()
+        tasks = {} # url -> task_id
+        with db_connect() as db:
+            for url in urls:
+                task_id = make_uuid()
+                tasks[url] = task_id
+                status = 1 # Always in working status
+                db.execute('INSERT INTO tasks VALUES (?,?,?,?,?)', (task_id, openid, url, status, article_id))
+        responses = worker.Crawl(wo.CrawlRequest(urls=urls))
+        threading.Thread(target=lambda: self._async_handle_responses(responses, storage, tasks)).run()
+        self.task_monitor.notify()
         return Empty()
+
+    def _get_current_tasks(self, openid):
+        tasks = []
+        with db_connect() as db:
+            r = db.execute('SELECT id, url, status, article_id FROM tasks WHERE user = ?', (openid,))
+            task = co.Task(id=r['id'], url=r['url'], status=r['status'], article_id=r['article_id'])
+            tasks.append(task)
+        return sc.CurrentTasks(tasks=tasks)
 
     @requires_token
     def GetActiveTasks(self, request, context):
+        openid = context.openid
         logging.info(f'GetActiveTasks')
-        task = co.Task(id=b'afwfh32ofho2ho', url='bing.com', status=co.Task.Status.working, article_id=b'afwfh32ofho2ho2')
-        tasks = [task]
-        while True:
-            yield sc.CurrentTasks(tasks=tasks)
-            tasks.append(task)
-            time.sleep(2)
+        try:
+            queue = self.task_monitor.register()
+            while queue.get(timeout=300):
+                yield self._get_current_tasks(openid)
+        finally:
+            self.task_monitor.unregister(queue)
 
     @requires_token
     def MarkAllAsRead(self, request, context):
@@ -246,18 +301,23 @@ class MyScheduler(SchedulerServicer):
         return Empty()
 
     def GetSnapshot(self, request, context):
-        logging.info(f'GetSnapshot')
-        return co.Content(
-            type=co.Content.Type.html,
-            data=b'<body>Hello world</body>',
-        )
+        snapshot_id = request.id
+        url = request.url
+        logging.info(f'GetSnapshot: id={snapshot_id}, url={url}')
+
+        with db_connect() as db:
+            r = db.execute('SELECT type, storage_key FROM data WHERE snapshot = ?', (snapshot_id,)).fetchone()
+        storage = self.select_storage()
+        data = storage.GetContent(st.StorageKey(key=r['storage_key'])).data
+        content = Co.Content(type=r['type'], data=data)
+        return content
 
     def ListSnapshots(self, request, context):
         url = request.url
         logging.info(f'ListSnapshots: {url}')
 
         snapshots = []
-        with self.db_connect() as db:
+        with db_connect() as db:
             for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.url = ?', (url,)):
                 snapshots.append(co.Snapshot(id=r['uuid'], hash=r['hash'], url=r['url'], timestamp=r['timestamp'], status=co.Snapshot.Status.ok))
         return sc.Snapshots(snapshots=snapshots)
@@ -275,6 +335,32 @@ class MyScheduler(SchedulerServicer):
         logging.info(f'Storage registered: {addr}:{port}')
         self.storage_pool.append(f'{addr}:{port}')
         return Empty()
+
+
+class TaskMonitor:
+    def __init__(self):
+        # id -> queue
+        self.listeners = {}
+        self.lock = threading.Lock()
+
+    def register(self):
+        '''Register as a listener of task update events. Returns a Queue for incoming events.'''
+        queue = Queue()
+        queue.id = make_uuid()
+        with self.lock:
+            self.listeners[queue.id] = queue
+        return queue
+
+    def unregister(self, queue):
+        '''Give the queue back to unregister.'''
+        with self.lock:
+            del self.listeners[queue.id]
+
+    def notify(self):
+        '''Notify all listeners by adding an item to their queue.'''
+        with self.lock:
+            for queue in self.listeners:
+                queue.put(True)
 
 
 def serve(port=8000):
