@@ -74,6 +74,10 @@ def requires_token(f):
     return inner
 
 
+class AuthException(Exception):
+    pass
+
+
 class Auth:
     def __init__(self):
         self.lock = threading.Lock()
@@ -87,7 +91,7 @@ class Auth:
         '''
         with self.lock:
             if token in self.pending_tokens or token in self.confirmed_tokens:
-                raise Exception()
+                raise AuthException
             event = threading.Event()
             self.pending_tokens[token] = event
 
@@ -102,7 +106,7 @@ class Auth:
         '''
         with self.lock:
             if token not in self.pending_tokens:
-                raise Exception()
+                raise AuthException
             self.pending_tokens[token].set()
             self.confirmed_tokens[token] = openid
 
@@ -111,7 +115,7 @@ class Auth:
            Raise if the token does not exist.
         '''
         if token not in self.confirmed_tokens:
-            raise Exception()
+            raise AuthException
         return self.confirmed_tokens[token]
 
 
@@ -142,7 +146,7 @@ class MyScheduler(SchedulerServicer):
                 return Empty()
             else:
                 context.abort(StatusCode.DEADLINE_EXCEEDED, "Confirmation timeout")
-        except:
+        except AuthException:
             context.abort(StatusCode.INVALID_ARGUMENT, "Token is in use")
 
     def ConfirmLogin(self, request, context):
@@ -153,12 +157,13 @@ class MyScheduler(SchedulerServicer):
 
         try:
             self.auth.confirm_login_token(token, openid)
-        except:
+        except AuthException:
             context.abort(StatusCode.INVALID_ARGUMENT, "Non-existing token")
 
         with db_connect() as db:
             cnt = db.execute('SELECT COUNT(*) FROM users WHERE users.openid = ?', (openid,)).fetchone()[0]
             if cnt == 0:
+                logging.info(f'Creating new user: username={username}, openid={openid}')
                 db.execute('INSERT INTO users VALUES (?,?)', (openid, username))
         return Empty()
 
@@ -233,27 +238,9 @@ class MyScheduler(SchedulerServicer):
 
         snapshots = []
         with db_connect() as db:
-            for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2', (article_id, openid)):
+            for r in db.execute('SELECT uuid, hash, url, timestamp FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2', (article_id, openid)):
                 snapshots.append(co.Snapshot(id=r['uuid'], hash=r['hash'], url=r['url'], timestamp=r['timestamp'], status=co.Snapshot.Status.ok))
         return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
-
-    def _async_handle_responses(self, responses, storage, tasks):
-        for res in responses:
-            url = res.url
-            task_id = tasks[url]
-            content = res.content
-            storage_key = make_uuid()
-            storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
-
-            timestamp = make_timestamp()
-            _id = make_uuid()
-            _hash = sha256(content.data)
-            ledger_key = ledger.add(_hash)
-            with db_connect() as db:
-                db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
-                db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
-                db.execute('DELETE FROM tasks WHERE task_id = ?', (task_id,))
-            self.task_monitor.notify()
 
     @requires_token
     def Capture(self, request, context):
@@ -271,27 +258,48 @@ class MyScheduler(SchedulerServicer):
                 tasks[url] = task_id
                 status = 1 # Always in working status
                 db.execute('INSERT INTO tasks VALUES (?,?,?,?,?)', (task_id, openid, url, status, article_id))
-        responses = worker.Crawl(wo.CrawlRequest(urls=urls))
-        threading.Thread(target=lambda: self._async_handle_responses(responses, storage, tasks)).run()
+
+        def _async_action():
+            for res in worker.Crawl(wo.CrawlRequest(urls=urls)):
+                url = res.url
+                task_id = tasks[url]
+                content = res.content
+                storage_key = make_uuid()
+                storage.StoreContent(st.StoreRequest(key=storage_key, data=content.data))
+
+                timestamp = make_timestamp()
+                _id = make_uuid()
+                _hash = sha256(content.data)
+                ledger_key = ledger.add(_hash)
+                with db_connect() as db:
+                    db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)', (_id, article_id, url, _hash, timestamp, ledger_key))
+                    db.execute('INSERT INTO data VALUES (?,?,?)', (_id, content.type, storage_key))
+                    db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+                self.task_monitor.notify()
+
+        threading.Thread(target=_async_action).start()
         self.task_monitor.notify()
         return Empty()
 
     def _get_current_tasks(self, openid):
         tasks = []
         with db_connect() as db:
-            r = db.execute('SELECT id, url, status, article_id FROM tasks WHERE user = ?', (openid,))
-            task = co.Task(id=r['id'], url=r['url'], status=r['status'], article_id=r['article_id'])
-            tasks.append(task)
+            for r in db.execute('SELECT id, url, status, article_id FROM tasks WHERE user = ?', (openid,)):
+                task = co.Task(id=r['id'], url=r['url'], status=r['status'], article_id=r['article_id'])
+                tasks.append(task)
         return sc.CurrentTasks(tasks=tasks)
 
     @requires_token
     def GetActiveTasks(self, request, context):
         openid = context.openid
         logging.info(f'GetActiveTasks')
+        yield self._get_current_tasks(openid)
         try:
             queue = self.task_monitor.register()
             while queue.get(timeout=300):
                 yield self._get_current_tasks(openid)
+        except:
+            logging.info('Empty queue detected?')
         finally:
             self.task_monitor.unregister(queue)
 
@@ -303,13 +311,16 @@ class MyScheduler(SchedulerServicer):
     def GetSnapshot(self, request, context):
         snapshot_id = request.id
         url = request.url
+        logging.info(f'wtf {request}')
         logging.info(f'GetSnapshot: id={snapshot_id}, url={url}')
 
         with db_connect() as db:
             r = db.execute('SELECT type, storage_key FROM data WHERE snapshot = ?', (snapshot_id,)).fetchone()
+        if r is None:
+            context.abort(StatusCode.NOT_FOUND, 'Snapshot not found')
         storage = self.select_storage()
         data = storage.GetContent(st.StorageKey(key=r['storage_key'])).data
-        content = Co.Content(type=r['type'], data=data)
+        content = co.Content(type=r['type'], data=data)
         return content
 
     def ListSnapshots(self, request, context):
@@ -359,7 +370,7 @@ class TaskMonitor:
     def notify(self):
         '''Notify all listeners by adding an item to their queue.'''
         with self.lock:
-            for queue in self.listeners:
+            for queue in self.listeners.values():
                 queue.put(True)
 
 
