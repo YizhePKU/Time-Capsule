@@ -28,15 +28,9 @@ message Article {
 }
 
 message Task {
-    enum Status {
-        waiting = 0;
-        working = 1;
-        failed = 2;
-        finished = 3;
-    }
     bytes id = 1;
     string url = 2;
-    Status status = 3;
+    int32 status = 3 [deprecated = true];
     bytes article_id = 4;
 }
 

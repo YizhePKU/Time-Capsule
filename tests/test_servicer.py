@@ -87,10 +87,9 @@ def test_active_tasks(servicer, ctx, login, pool):
                 'id': uuid(),
                 'user': openid,
                 'url': 'http://example.com',
-                'status': co.Task.Status.failed,
                 'article_id': uuid(),
             }
-            db.execute('INSERT INTO tasks VALUES ($id, $user, $url, $status, $article_id)', params)
+            db.execute('INSERT INTO tasks VALUES ($id, $user, $url, $article_id)', params)
 
     results = []
     canceled = False
@@ -151,10 +150,9 @@ def test_capture(servicer, ctx, login, pool, monkeypatch):
     assert wait_until(lambda: len(results) == 6)
 
     tasks = results[5]
-    print(results[4:])
-    assert len(tasks) == 4
-    assert all(task.status == co.Task.Status.failed for task in tasks if 'fail' in task.url)
-    assert all(task.status == co.Task.Status.finished for task in tasks if 'fail' not in task.url)
+    print(tasks)
+    assert len(tasks) == 1
+    assert 'fail' in tasks[0].url
 
     canceled = True
     sem = servicer.task_event.listeners.pop()

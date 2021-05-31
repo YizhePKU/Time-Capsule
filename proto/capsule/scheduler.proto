@@ -69,6 +69,7 @@ service Scheduler {
     // Tasks
     rpc Capture (CaptureRequest) returns (Empty);
     rpc GetActiveTasks (Empty) returns (stream CurrentTasks);
+    rpc ClearTasks (Empty) returns (Empty);
 
     // Notifications
     rpc MarkAllAsRead (Empty) returns (Empty);

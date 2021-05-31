@@ -230,10 +230,21 @@ class MyScheduler(SchedulerServicer):
                         hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
-                        status=co.Snapshot.Status.ok,
                     )
                 )
         return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
+
+    def _add_notification(self, openid, msg, is_error):
+        with self.db_fn() as db:
+            params = {
+                'id': uuid(),
+                'user': openid,
+                'type': 1 if is_error else 0,
+                'created_at': unix_time(),
+                'has_read': 0,
+                'content': msg,
+            }
+            db.execute('INSERT INTO notifications VALUES ($id, $user, $type, $created_at, $has_read, $content)', params)
 
     @log_request
     @requires_token
@@ -249,18 +260,18 @@ class MyScheduler(SchedulerServicer):
             for url in urls:
                 task_id = uuid()
                 tasks[url] = task_id
-                status = 1  # Always in working status
                 db.execute(
-                    "INSERT INTO tasks VALUES (?,?,?,?,?)",
-                    (task_id, openid, url, status, article_id),
+                    "INSERT INTO tasks VALUES (?,?,?,?)",
+                    (task_id, openid, url, article_id),
                 )
 
         def _async_action():
+            successful_urls = set()
             for res in worker.Crawl(wo.CrawlRequest(urls=urls)):
                 url = res.url
-                logging.info(f'Capture succeeded for {url}')
                 task_id = tasks[url]
                 content = res.content
+                logging.info(f'Capture succeeded for {url} of type {content.type}')
                 storage_key = uuid()
                 storage.StoreContent(
                     st.StoreRequest(key=storage_key, data=content.data)
@@ -271,22 +282,24 @@ class MyScheduler(SchedulerServicer):
                 _hash = sha256(content.data)
                 ledger_key = ledger.add(_hash)
                 with self.db_fn() as db:
+                    # If the snapshot already exists(because this snapshot has multiple pieces of data attached), ignore.
                     db.execute(
-                        "INSERT INTO snapshots VALUES (?,?,?,?,?,?)",
+                        "INSERT OR IGNORE INTO snapshots VALUES (?,?,?,?,?,?)",
                         (_id, article_id, url, _hash, timestamp, ledger_key),
                     )
                     db.execute(
                         "INSERT INTO data VALUES (?,?,?)",
                         (_id, content.type, storage_key),
                     )
-                    db.execute("UPDATE tasks SET status = 3 WHERE id = ?", (task_id,))
-                del tasks[url]
+                    db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+                    successful_urls.add(url)
                 self.task_event.notify()
             # Worker hang up
             with self.db_fn() as db:
                 for url, task_id in tasks.items():
-                    logging.info(f'Capture failed for {url}')
-                    db.execute("UPDATE tasks SET status = 2 WHERE id = ?", (task_id,))
+                    if url not in successful_urls:
+                        logging.info(f'Capture failed for {url}')
+                        self._add_notification(openid, f"拍摄快照失败：{url}", is_error=True)
             self.task_event.notify()
 
         threading.Thread(target=_async_action).start()
@@ -297,13 +310,12 @@ class MyScheduler(SchedulerServicer):
         tasks = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT id, url, status, article_id FROM tasks WHERE user = ?",
+                "SELECT id, url, article_id FROM tasks WHERE user = ?",
                 (openid,),
             ):
                 task = co.Task(
                     id=r["id"],
                     url=r["url"],
-                    status=r["status"],
                     article_id=r["article_id"],
                 )
                 tasks.append(task)
@@ -364,7 +376,6 @@ class MyScheduler(SchedulerServicer):
                         hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
-                        status=co.Snapshot.Status.ok,
                     )
                 )
         return sc.Snapshots(snapshots=snapshots)
