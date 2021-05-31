@@ -3,8 +3,8 @@ import random
 import threading
 import sqlite3
 import logging
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from queue import Queue
 import grpc
 from grpc import StatusCode
 
@@ -50,7 +50,7 @@ def requires_token(f):
 
 def log_request(f):
     def inner(self, request, context):
-        logging.debug(f.__name__, request)
+        logging.info(f'{f.__name__}\n{request}')
         return f(self, request, context)
 
     return inner
@@ -258,6 +258,7 @@ class MyScheduler(SchedulerServicer):
         def _async_action():
             for res in worker.Crawl(wo.CrawlRequest(urls=urls)):
                 url = res.url
+                logging.info(f'Capture succeeded for {url}')
                 task_id = tasks[url]
                 content = res.content
                 storage_key = uuid()
@@ -283,7 +284,8 @@ class MyScheduler(SchedulerServicer):
                 self.task_event.notify()
             # Worker hang up
             with self.db_fn() as db:
-                for task_id in tasks.values():
+                for url, task_id in tasks.items():
+                    logging.info(f'Capture failed for {url}')
                     db.execute("UPDATE tasks SET status = 2 WHERE id = ?", (task_id,))
             self.task_event.notify()
 
@@ -334,7 +336,7 @@ class MyScheduler(SchedulerServicer):
             ).fetchone()
         if r is None:
             context.abort(StatusCode.NOT_FOUND, "Snapshot not found")
-        storage = self.res.storage_stub()
+        storage = self.storage_stub()
         data = storage.GetContent(st.StorageKey(key=r["storage_key"])).data
         content = co.Content(type=r["type"], data=data)
         return content
