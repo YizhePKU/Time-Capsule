@@ -322,6 +322,13 @@ class MyScheduler(SchedulerServicer):
 
     @log_request
     @requires_token
+    def ClearTasks(self, req, ctx):
+        with self.db_fn() as db:
+            db.execute('DELETE FROM tasks WHERE user = ?', (ctx.openid,))
+        return co.Empty()
+
+    @log_request
+    @requires_token
     def MarkAllAsRead(self, request, context):
         return co.Empty()
 
