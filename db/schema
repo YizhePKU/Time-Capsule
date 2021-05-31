@@ -17,7 +17,7 @@ CREATE TABLE tasks (
     id BLOB NOT NULL,
     user TEXT NOT NULL,
     url TEXT NOT NULL,
-    status INT NOT NULL, -- waiting = 0, working = 1
+    status INT NOT NULL, -- waiting = 0, working = 1, failed = 2, finished = 3
     article_id BLOB NOT NULL
 );
 CREATE INDEX tasks_user ON tasks (user);
