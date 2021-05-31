@@ -69,13 +69,13 @@ class MyScheduler(SchedulerServicer):
     def worker_stub(self):
         if not self.endpoints['worker']:
             raise Exception('No worker available')
-        endpoint = random.choice(self.endpoints['worker'])
+        endpoint = random.choice(list(self.endpoints['worker']))
         return WorkerStub(grpc.insecure_channel(endpoint))
 
     def storage_stub(self):
         if not self.endpoints['storage']:
             raise Exception('No storage available')
-        endpoint = random.choice(self.endpoints['storage'])
+        endpoint = random.choice(list(self.endpoints['storage']))
         return StorageStub(grpc.insecure_channel(endpoint))
 
     @log_request

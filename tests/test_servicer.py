@@ -159,3 +159,9 @@ def test_capture(servicer, ctx, login, pool, monkeypatch):
     canceled = True
     sem = servicer.task_event.listeners.pop()
     sem.release()
+
+
+def test_add_worker(servicer, ctx):
+    servicer.RegisterWorker(co.Endpoint(addr='localhost', port=1234), ctx)
+    assert len(servicer.endpoints['worker']) == 1
+    assert servicer.worker_stub()
