@@ -378,9 +378,8 @@ class MyScheduler(SchedulerServicer):
 def serve(port=8000):
     server = grpc.server(ThreadPoolExecutor(max_workers=10))
     my_scheduler = MyScheduler(
-        db=lambda: open_db(Path("db/production"), Path("db/schema")),
+        db_fn=lambda: open_db(Path("db/production"), Path("db/schema")),
         auth=Auth(),
-        resource=ResourcePool(),
         task_event=Event(),
     )
     add_SchedulerServicer_to_server(my_scheduler, server)
