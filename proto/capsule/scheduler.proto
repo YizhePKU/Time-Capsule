@@ -8,7 +8,7 @@ message ListSnapshotsRequest {
     string url = 1;
 }
 
-// Content is not countable, but whatever.
+// Content is not a countable noun, but whatever.
 message Contents {
     repeated Content content = 1;
 }
@@ -59,7 +59,7 @@ service Scheduler {
 
     // Public snapshots
     rpc ListSnapshots (ListSnapshotsRequest) returns (Snapshots);
-    rpc GetSnapshot (Snapshot) returns (ContentList);
+    rpc GetSnapshot (Snapshot) returns (Contents);
 
     // User interface
     rpc GetUserData (Empty) returns (UserData);

@@ -58,6 +58,7 @@ message Snapshot {
     string url = 3;
     uint64 timestamp = 4;
     Status status = 5;
+    bytes ledger_key = 6;
 }
 
 message Content {

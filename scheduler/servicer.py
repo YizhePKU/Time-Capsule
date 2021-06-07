@@ -207,7 +207,7 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT uuid, hash, url, timestamp FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2",
+                "SELECT uuid, hash, url, timestamp, ledger_key FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2",
                 (article_id, openid),
             ):
                 snapshots.append(
@@ -216,6 +216,7 @@ class MyScheduler(SchedulerServicer):
                         hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
+                        ledger_key=r['ledger_key'],
                     )
                 )
         return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
@@ -260,7 +261,7 @@ class MyScheduler(SchedulerServicer):
 
                 timestamp = unix_time()
                 _id = uuid()
-                _hash = sha256(content.data)
+                _hash = sha256(content.data) # NOTE: This is the wrong hash!
                 ledger_key = ledger.add(_hash)
                 with self.db_fn() as db:
                     # If the snapshot already exists(because this snapshot has multiple pieces of data attached), ignore.
@@ -339,7 +340,7 @@ class MyScheduler(SchedulerServicer):
         contents = []
         for datum in r:
             contents.append(co.Content(type=r['type'], data=r['access_url'].encode()))
-        return sc.Content(contents)
+        return sc.Contents(contents)
 
     @log_request
     def ListSnapshots(self, request, context):
@@ -348,7 +349,7 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.url = ?",
+                "SELECT uuid, hash, url, timestamp, ledger_key FROM snapshots WHERE snapshots.url = ?",
                 (url,),
             ):
                 snapshots.append(
@@ -357,6 +358,7 @@ class MyScheduler(SchedulerServicer):
                         hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
+                        ledger_key=r['ledger_key'],
                     )
                 )
         return sc.Snapshots(snapshots=snapshots)
