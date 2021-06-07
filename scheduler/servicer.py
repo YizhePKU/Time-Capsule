@@ -332,6 +332,12 @@ class MyScheduler(SchedulerServicer):
     def GetSnapshot(self, request, context):
         snapshot_id = request.id
 
+        # Check if snapshot is reported
+        with self.db_fn() as db:
+            r = db.execute('SELECT reported, report_reason FROM snapshots WHERE uuid = ?', (snapshot_id,))
+            if r['reported'] > 0:
+                context.abort(StatusCode.PERMISSION_DENIED, f"Snapshot is reported: {r['report_reason']}")
+
         with self.db_fn() as db:
             r = db.execute(
                 "SELECT type, access_url FROM data WHERE snapshot = ?", (snapshot_id,)
@@ -364,6 +370,11 @@ class MyScheduler(SchedulerServicer):
                     )
                 )
         return sc.Snapshots(snapshots=snapshots)
+
+    @log_request
+    def Report(self, req, ctx):
+        with self.db_fn() as db:
+            db.execute('UPDATE snapshots SET reported = 1, report_reason = ? WHERE uuid = ?', (req.reason, req.snapshot_id))
 
     @log_request
     def RegisterWorker(self, request, context):

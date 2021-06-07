@@ -37,7 +37,9 @@ CREATE TABLE snapshots (
     url TEXT NOT NULL,
     hash BLOB NOT NULL,
     timestamp INTEGER NOT NULL,
-    ledger_key BLOB NOT NULL
+    ledger_key BLOB NOT NULL,
+    reported INT NOT NULL DEFAULT 0,
+    report_reason TEXT
 );
 CREATE UNIQUE INDEX snapshots_uuid ON snapshots (uuid);
 CREATE INDEX snapshots_url ON snapshots (url);

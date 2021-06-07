@@ -52,6 +52,11 @@ message CurrentTasks {
     repeated Task tasks = 1;
 }
 
+message ReportRequest {
+    bytes snapshot_id = 1;
+    string reason = 2;
+}
+
 service Scheduler {
     // Wechat login
     rpc TryLogin (LoginRequest) returns (Empty);
@@ -78,6 +83,9 @@ service Scheduler {
 
     // Notifications
     rpc MarkAllAsRead (Empty) returns (Empty);
+
+    // Management
+    rpc Report (ReportRequest) returns (Empty);
 
     // Workers
     rpc RegisterWorker (Endpoint) returns (Empty);
