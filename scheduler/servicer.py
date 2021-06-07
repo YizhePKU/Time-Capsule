@@ -207,13 +207,12 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT uuid, hash, url, timestamp FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2",
+                "SELECT uuid, url, timestamp FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2",
                 (article_id, openid),
             ):
                 snapshots.append(
                     co.Snapshot(
                         id=r["uuid"],
-                        hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
                     )
@@ -354,13 +353,12 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.url = ?",
+                "SELECT uuid, url, timestamp FROM snapshots WHERE snapshots.url = ?",
                 (url,),
             ):
                 snapshots.append(
                     co.Snapshot(
                         id=r["uuid"],
-                        hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
                     )

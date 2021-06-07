@@ -57,7 +57,7 @@ message Snapshot {
     bytes hash = 2 [deprecated = true];
     string url = 3;
     uint64 timestamp = 4;
-    Status status = 5;
+    Status status = 5 [deprecated = true];
 }
 
 message Content {
