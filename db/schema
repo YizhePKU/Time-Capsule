@@ -35,10 +35,8 @@ CREATE TABLE snapshots (
     uuid BLOB NOT NULL,
     article BLOB NOT NULL,
     url TEXT NOT NULL,
-    hash BLOB NOT NULL,
     timestamp INTEGER NOT NULL,
-    ledger_key BLOB NOT NULL,
-    reported INT NOT NULL DEFAULT 0,
+    reported INT NOT NULL,
     report_reason TEXT
 );
 CREATE UNIQUE INDEX snapshots_uuid ON snapshots (uuid);
@@ -48,6 +46,8 @@ CREATE INDEX snapshots_article ON snapshots (article);
 CREATE TABLE data (
     snapshot BLOB NOT NULL,
     type INTEGER NOT NULL,
-    access_url TEXT NOT NULL
+    access_url TEXT NOT NULL,
+    hash BLOB NOT NULL,
+    ledger_key BLOB NOT NULL
 );
 CREATE INDEX data_snapshot ON data (snapshot);

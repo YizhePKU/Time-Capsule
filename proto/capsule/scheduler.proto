@@ -10,7 +10,7 @@ message ListSnapshotsRequest {
 
 // Content is not a countable noun, but whatever.
 message Contents {
-    repeated Content content = 1;
+    repeated Content contents = 1;
 }
 
 message Snapshots {

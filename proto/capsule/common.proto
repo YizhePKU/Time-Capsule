@@ -54,11 +54,10 @@ message Snapshot {
     };
 
     bytes id = 1;
-    bytes hash = 2;
+    bytes hash = 2 [deprecated = true];
     string url = 3;
     uint64 timestamp = 4;
     Status status = 5;
-    bytes ledger_key = 6;
 }
 
 message Content {
@@ -70,6 +69,8 @@ message Content {
 
     Type type = 1;
     bytes data = 2; // url of the access link
+    bytes ledger_key = 3;
+    bytes hash = 4;
 }
 
 message Endpoint {

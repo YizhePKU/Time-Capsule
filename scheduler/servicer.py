@@ -10,7 +10,7 @@ from grpc import StatusCode
 from scheduler import ledger
 from scheduler.event import Event
 from scheduler.auth import Auth, AuthException
-from scheduler.utils import unix_time, uuid, sha256, open_db
+from scheduler.utils import unix_time, uuid, open_db
 
 from capsule import common_pb2 as co
 
@@ -207,7 +207,7 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT uuid, hash, url, timestamp, ledger_key FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2",
+                "SELECT uuid, hash, url, timestamp FROM snapshots, articles WHERE snapshots.article = ?1 AND articles.id = ?1 AND articles.user = ?2",
                 (article_id, openid),
             ):
                 snapshots.append(
@@ -216,7 +216,6 @@ class MyScheduler(SchedulerServicer):
                         hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
-                        ledger_key=r['ledger_key'],
                     )
                 )
         return sc.GetArticleSnapshotsResponse(snapshots=snapshots)
@@ -258,20 +257,18 @@ class MyScheduler(SchedulerServicer):
                 task_id = tasks[url]
                 content = res.content
                 logging.info(f'Capture succeeded for {url} of type {content.type}')
-
                 timestamp = unix_time()
                 _id = uuid()
-                _hash = sha256(content.data) # NOTE: This is the wrong hash!
-                ledger_key = ledger.add(_hash)
+                ledger_key = ledger.add(content.hash)
                 with self.db_fn() as db:
                     # If the snapshot already exists(because this snapshot has multiple pieces of data attached), ignore.
                     db.execute(
                         "INSERT OR IGNORE INTO snapshots VALUES (?,?,?,?,?,?)",
-                        (_id, article_id, url, _hash, timestamp, ledger_key),
+                        (_id, article_id, url, timestamp, False, None),
                     )
                     db.execute(
-                        "INSERT INTO data VALUES (?,?,?)",
-                        (_id, content.type, content.data.decode()),
+                        "INSERT INTO data VALUES (?,?,?,?,?)",
+                        (_id, content.type, content.data.decode(), content.hash, ledger_key),
                     )
                     db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
                     successful_urls.add(url)
@@ -334,21 +331,21 @@ class MyScheduler(SchedulerServicer):
 
         # Check if snapshot is reported
         with self.db_fn() as db:
-            r = db.execute('SELECT reported, report_reason FROM snapshots WHERE uuid = ?', (snapshot_id,))
+            r = db.execute('SELECT reported, report_reason FROM snapshots WHERE uuid = ?', (snapshot_id,)).fetchone()
             if r['reported'] > 0:
                 context.abort(StatusCode.PERMISSION_DENIED, f"Snapshot is reported: {r['report_reason']}")
 
         with self.db_fn() as db:
             r = db.execute(
-                "SELECT type, access_url FROM data WHERE snapshot = ?", (snapshot_id,)
+                "SELECT type, access_url, ledger_key, hash FROM data WHERE snapshot = ?", (snapshot_id,)
             )
         if r is None:
             context.abort(StatusCode.NOT_FOUND, "Snapshot not found")
 
         contents = []
         for datum in r:
-            contents.append(co.Content(type=datum['type'], data=datum['access_url'].encode()))
-        return sc.Contents(contents)
+            contents.append(co.Content(type=datum['type'], data=datum['access_url'].encode(), ledger_key=datum['ledger_key'], hash=datum['hash']))
+        return sc.Contents(contents=contents)
 
     @log_request
     def ListSnapshots(self, request, context):
@@ -357,7 +354,7 @@ class MyScheduler(SchedulerServicer):
         snapshots = []
         with self.db_fn() as db:
             for r in db.execute(
-                "SELECT uuid, hash, url, timestamp, ledger_key FROM snapshots WHERE snapshots.url = ?",
+                "SELECT uuid, hash, url, timestamp FROM snapshots WHERE snapshots.url = ?",
                 (url,),
             ):
                 snapshots.append(
@@ -366,7 +363,6 @@ class MyScheduler(SchedulerServicer):
                         hash=r["hash"],
                         url=r["url"],
                         timestamp=r["timestamp"],
-                        ledger_key=r['ledger_key'],
                     )
                 )
         return sc.Snapshots(snapshots=snapshots)
