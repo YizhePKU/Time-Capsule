@@ -127,7 +127,7 @@ class MyScheduler(SchedulerServicer):
 
             notifications = []
             for r in db.execute(
-                "SELECT id, created_at, has_read, content, type FROM notifications WHERE user = ?",
+                "SELECT id, created_at, has_read, content, type FROM notifications WHERE user = ? ORDER BY created_at DESC",
                 (openid,),
             ):
                 notifications.append(
