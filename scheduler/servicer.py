@@ -273,11 +273,12 @@ class MyScheduler(SchedulerServicer):
                     successful_urls.add(url)
                 self.task_event.notify()
             # Worker hang up
-            with self.db_fn() as db:
-                for url, task_id in tasks.items():
-                    if url not in successful_urls:
-                        logging.info(f'Capture failed for {url}')
-                        self._add_notification(openid, f"拍摄快照失败：{url}", is_error=True)
+            for url, task_id in tasks.items():
+                if url not in successful_urls:
+                    logging.info(f'Capture failed for {url}')
+                    self._add_notification(openid, f"拍摄快照失败：{url}", is_error=True)
+                    with self.db_fn() as db:
+                        db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
             self.task_event.notify()
 
         threading.Thread(target=_async_action).start()
