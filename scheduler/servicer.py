@@ -97,8 +97,8 @@ class MyScheduler(SchedulerServicer):
                 db.execute("INSERT INTO users VALUES (?,?)", (openid, username))
         return co.Empty()
 
-    @log_request
     @requires_token
+    @log_request
     def GetUserData(self, request, context):
         openid = context.openid
 
@@ -144,8 +144,8 @@ class MyScheduler(SchedulerServicer):
         )
         return r
 
-    @log_request
     @requires_token
+    @log_request
     def CreateArticle(self, request, context):
         openid = context.openid
         title = request.title
@@ -158,8 +158,8 @@ class MyScheduler(SchedulerServicer):
             )
         return co.Article(id=_id, title=title, created_at=timestamp)
 
-    @log_request
     @requires_token
+    @log_request
     def DeleteArticle(self, request, context):
         openid = context.openid
         article_id = request.article_id
@@ -171,8 +171,8 @@ class MyScheduler(SchedulerServicer):
             )
         return co.Empty()
 
-    @log_request
     @requires_token
+    @log_request
     def ChangeArticleTitle(self, request, context):
         openid = context.openid
         article_id = request.article_id
@@ -185,8 +185,8 @@ class MyScheduler(SchedulerServicer):
             )
         return co.Empty()
 
-    @log_request
     @requires_token
+    @log_request
     def RemoveSnapshotFromArticle(self, request, context):
         article_id = request.article_id
         snapshot_id = request.snapshot_id
@@ -198,8 +198,8 @@ class MyScheduler(SchedulerServicer):
             )
         return co.Empty()
 
-    @log_request
     @requires_token
+    @log_request
     def GetArticleSnapshots(self, request, context):
         openid = context.openid
         article_id = request.article_id
@@ -232,8 +232,8 @@ class MyScheduler(SchedulerServicer):
             }
             db.execute('INSERT INTO notifications VALUES ($id, $user, $type, $created_at, $has_read, $content)', params)
 
-    @log_request
     @requires_token
+    @log_request
     def Capture(self, request, context):
         openid = context.openid
         urls = list(set(request.urls))
@@ -300,8 +300,8 @@ class MyScheduler(SchedulerServicer):
                 tasks.append(task)
         return sc.CurrentTasks(tasks=tasks)
 
-    @log_request
     @requires_token
+    @log_request
     def GetActiveTasks(self, request, context):
         openid = context.openid
         yield self._get_current_tasks(openid)
@@ -311,15 +311,15 @@ class MyScheduler(SchedulerServicer):
             yield self._get_current_tasks(openid)
         self.task_event.unregister(sem)
 
-    @log_request
     @requires_token
+    @log_request
     def ClearTasks(self, req, ctx):
         with self.db_fn() as db:
             db.execute('DELETE FROM tasks WHERE user = ?', (ctx.openid,))
         return co.Empty()
 
-    @log_request
     @requires_token
+    @log_request
     def MarkAllAsRead(self, req, ctx):
         with self.db_fn() as db:
             db.execute('UPDATE notifications SET has_read = 1 WHERE user = ?', (ctx.openid,))
