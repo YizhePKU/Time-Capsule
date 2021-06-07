@@ -347,7 +347,7 @@ class MyScheduler(SchedulerServicer):
 
         contents = []
         for datum in r:
-            contents.append(co.Content(type=r['type'], data=r['access_url'].encode()))
+            contents.append(co.Content(type=datum['type'], data=datum['access_url'].encode()))
         return sc.Contents(contents)
 
     @log_request
