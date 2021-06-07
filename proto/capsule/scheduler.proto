@@ -8,6 +8,11 @@ message ListSnapshotsRequest {
     string url = 1;
 }
 
+// Content is not countable, but whatever.
+message Contents {
+    repeated Content content = 1;
+}
+
 message Snapshots {
     repeated Snapshot snapshots = 1;
 }
@@ -54,7 +59,7 @@ service Scheduler {
 
     // Public snapshots
     rpc ListSnapshots (ListSnapshotsRequest) returns (Snapshots);
-    rpc GetSnapshot (Snapshot) returns (Content);
+    rpc GetSnapshot (Snapshot) returns (ContentList);
 
     // User interface
     rpc GetUserData (Empty) returns (UserData);
@@ -74,8 +79,7 @@ service Scheduler {
     // Notifications
     rpc MarkAllAsRead (Empty) returns (Empty);
 
-    // Workers and Storage
+    // Workers
     rpc RegisterWorker (Endpoint) returns (Empty);
-    rpc RegisterStorage (Endpoint) returns (Empty);
 }
 

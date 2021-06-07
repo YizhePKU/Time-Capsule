@@ -68,7 +68,7 @@ message Content {
     }
 
     Type type = 1;
-    bytes data = 2;
+    bytes data = 2; // url of the access link
 }
 
 message Endpoint {

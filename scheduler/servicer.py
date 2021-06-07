@@ -1,7 +1,6 @@
 import os
 import random
 import threading
-import sqlite3
 import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -24,9 +23,6 @@ from capsule.scheduler_pb2_grpc import (
 from capsule import worker_pb2 as wo
 from capsule.worker_pb2_grpc import WorkerStub
 
-from capsule import storage_pb2 as st
-from capsule.storage_pb2_grpc import StorageStub
-
 
 def requires_token(f):
     """Decorator that checks token in request metadata and puts an openid in context."""
@@ -41,7 +37,7 @@ def requires_token(f):
         token = metadata["token"]
         try:
             context.openid = self.auth.get_openid(token)
-        except:
+        except AuthException:
             context.abort(StatusCode.UNAUTHORIZED, "Bad token")
         return f(self, request, context)
 
@@ -61,22 +57,13 @@ class MyScheduler(SchedulerServicer):
         self.auth = auth
         self.task_event = task_event
         self.db_fn = db_fn
-        self.endpoints = {
-            "worker": set(),
-            "storage": set(),
-        }
+        self.workers = set()
 
     def worker_stub(self):
-        if not self.endpoints['worker']:
+        if not self.workers:
             raise Exception('No worker available')
-        endpoint = random.choice(list(self.endpoints['worker']))
+        endpoint = random.choice(list(self.workers))
         return WorkerStub(grpc.insecure_channel(endpoint))
-
-    def storage_stub(self):
-        if not self.endpoints['storage']:
-            raise Exception('No storage available')
-        endpoint = random.choice(list(self.endpoints['storage']))
-        return StorageStub(grpc.insecure_channel(endpoint))
 
     @log_request
     def TryLogin(self, request, context):
@@ -194,14 +181,13 @@ class MyScheduler(SchedulerServicer):
         with self.db_fn() as db:
             db.execute(
                 "UPDATE articles SET title = ? WHERE articles.id = ? AND articles.user = ?",
-                (article_id, openid),
+                (title, article_id, openid),
             )
         return co.Empty()
 
     @log_request
     @requires_token
     def RemoveSnapshotFromArticle(self, request, context):
-        openid = context.openid
         article_id = request.article_id
         snapshot_id = request.snapshot_id
 
@@ -254,7 +240,6 @@ class MyScheduler(SchedulerServicer):
         article_id = request.article_id
 
         worker = self.worker_stub()
-        storage = self.storage_stub()
         tasks = {}  # url -> task_id
         with self.db_fn() as db:
             for url in urls:
@@ -272,10 +257,6 @@ class MyScheduler(SchedulerServicer):
                 task_id = tasks[url]
                 content = res.content
                 logging.info(f'Capture succeeded for {url} of type {content.type}')
-                storage_key = uuid()
-                storage.StoreContent(
-                    st.StoreRequest(key=storage_key, data=content.data)
-                )
 
                 timestamp = unix_time()
                 _id = uuid()
@@ -289,7 +270,7 @@ class MyScheduler(SchedulerServicer):
                     )
                     db.execute(
                         "INSERT INTO data VALUES (?,?,?)",
-                        (_id, content.type, storage_key),
+                        (_id, content.type, content.data.decode()),
                     )
                     db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
                     successful_urls.add(url)
@@ -347,18 +328,18 @@ class MyScheduler(SchedulerServicer):
     @log_request
     def GetSnapshot(self, request, context):
         snapshot_id = request.id
-        url = request.url
 
         with self.db_fn() as db:
             r = db.execute(
-                "SELECT type, storage_key FROM data WHERE snapshot = ?", (snapshot_id,)
-            ).fetchone()
+                "SELECT type, access_url FROM data WHERE snapshot = ?", (snapshot_id,)
+            )
         if r is None:
             context.abort(StatusCode.NOT_FOUND, "Snapshot not found")
-        storage = self.storage_stub()
-        data = storage.GetContent(st.StorageKey(key=r["storage_key"])).data
-        content = co.Content(type=r["type"], data=data)
-        return content
+
+        contents = []
+        for datum in r:
+            contents.append(co.Content(type=r['type'], data=r['access_url'].encode()))
+        return sc.Content(contents)
 
     @log_request
     def ListSnapshots(self, request, context):
@@ -384,14 +365,7 @@ class MyScheduler(SchedulerServicer):
     def RegisterWorker(self, request, context):
         addr = request.addr
         port = request.port
-        self.endpoints['worker'].add(f"{addr}:{port}")
-        return co.Empty()
-
-    @log_request
-    def RegisterStorage(self, request, context):
-        addr = request.addr
-        port = request.port
-        self.endpoints['storage'].add(f"{addr}:{port}")
+        self.workers.add(f"{addr}:{port}")
         return co.Empty()
 
 

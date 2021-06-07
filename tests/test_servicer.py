@@ -12,7 +12,6 @@ from scheduler.utils import open_db, uuid
 from capsule import common_pb2 as co
 from capsule import scheduler_pb2 as sc
 from capsule import worker_pb2 as wo
-from capsule import storage_pb2 as st
 
 
 token = "mytoken"
@@ -127,12 +126,8 @@ def test_capture(servicer, ctx, login, pool, monkeypatch):
                 if not 'fail' in url:
                     yield wo.CrawlResponse(url=url)
 
-    class StorageStub:
-        def StoreContent(self, req):
-            pass
 
     monkeypatch.setattr(servicer, 'worker_stub', lambda: WorkerStub())
-    monkeypatch.setattr(servicer, 'storage_stub', lambda: StorageStub())
 
     results = []
     canceled = False
@@ -161,45 +156,6 @@ def test_capture(servicer, ctx, login, pool, monkeypatch):
 
 def test_add_worker(servicer, ctx):
     servicer.RegisterWorker(co.Endpoint(addr='localhost', port=1234), ctx)
-    assert len(servicer.endpoints['worker']) == 1
+    assert len(servicer.workers) == 1
     assert servicer.worker_stub()
 
-
-def test_multiple_data(servicer, ctx, login, patch_endpoints):
-    class WorkerStub:
-        def Crawl(self, req):
-            url = 'my_url'
-            yield wo.CrawlResponse(url=url, content=co.Content(type=co.Content.Type.html))
-            yield wo.CrawlResponse(url=url, content=co.Content(type=co.Content.Type.pdf))
-            yield wo.CrawlResponse(url=url, content=co.Content(type=co.Content.Type.video))
-
-    class StorageStub:
-        def StoreContent(self, req):
-            pass
-
-    monkeypatch.setattr(servicer, 'worker_stub', lambda: WorkerStub())
-    monkeypatch.setattr(servicer, 'storage_stub', lambda: StorageStub())
-
-    results = []
-    canceled = False
-
-    def inner():
-        for tasks in servicer.GetActiveTasks(co.Empty(), ctx):
-            if canceled:
-                return
-            results.append(tasks.tasks)
-
-    pool.submit(inner)
-    assert wait_until(lambda: len(results) == 1)
-
-    servicer.Capture(sc.CaptureRequest(ctx)
-    assert wait_until(lambda: len(results) == 4)
-
-    tasks = results[3]
-    assert len(tasks) == 0
-
-    # TODO: wait for worker/storage to switch data to url
-
-    canceled = True
-    sem = servicer.task_event.listeners.pop()
-    sem.release()

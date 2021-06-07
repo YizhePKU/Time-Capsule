@@ -45,7 +45,7 @@ CREATE INDEX snapshots_article ON snapshots (article);
 
 CREATE TABLE data (
     snapshot BLOB NOT NULL,
-    type INT NOT NULL, -- html = 0, pdf = 1, video = 2
-    storage_key BLOB NOT NULL
+    type INTEGER NOT NULL,
+    access_url TEXT NOT NULL
 );
 CREATE INDEX data_snapshot ON data (snapshot);
