@@ -323,7 +323,9 @@ class MyScheduler(SchedulerServicer):
 
     @log_request
     @requires_token
-    def MarkAllAsRead(self, request, context):
+    def MarkAllAsRead(self, req, ctx):
+        with self.db_fn() as db:
+            db.execute('UPDATE notifications SET has_read = 1 WHERE user = ?', (ctx.openid,))
         return co.Empty()
 
     @log_request
