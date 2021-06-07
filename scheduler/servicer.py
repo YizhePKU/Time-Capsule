@@ -370,6 +370,7 @@ class MyScheduler(SchedulerServicer):
     def Report(self, req, ctx):
         with self.db_fn() as db:
             db.execute('UPDATE snapshots SET reported = 1, report_reason = ? WHERE uuid = ?', (req.reason, req.snapshot_id))
+        return co.Empty()
 
     @log_request
     def RegisterWorker(self, request, context):
